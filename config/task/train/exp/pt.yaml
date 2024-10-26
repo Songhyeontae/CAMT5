@@ -1,0 +1,4 @@
+# @package task
+
+train_config:
+  device: "gpu"

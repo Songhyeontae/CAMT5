@@ -1,0 +1,12 @@
+defaults:
+  - task: test/dummy
+  - _self_
+output_path: "tmp" #TODO: change this to a proper path
+
+hydra:
+  job:
+    chdir: True
+    env_copy:
+      - EXTERNAL_PATH
+  run:
+    dir: ./logs/${now:%Y-%m-%d}/debug_${now:%H-%M-%S}
