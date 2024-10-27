@@ -101,7 +101,7 @@ class Trainer:
 
         self.evaluate(
             dataloader=test_dataloader,
-            model=model,
+            model=accelerator.unwrap_model(model),
             tokenizer=tokenizer,
             representation=representation,
             accelerator=accelerator,
@@ -253,7 +253,7 @@ class Trainer:
                         if self.config.eval_config != None:
                             self._maybe_validate(
                                 dataloader=validation_dataloader,
-                                model=model,
+                                model=accelerator.unwrap_model(model),
                                 tokenizer=tokenizer,
                                 representation=representation,
                                 accelerator=accelerator,
