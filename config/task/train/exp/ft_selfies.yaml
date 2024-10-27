@@ -22,6 +22,7 @@ train_config:
 
   checkpoint:
     every_steps: 10000
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_selfies_base_${now:%m%d}_stereo
 
   logging_config:
     every_steps: 100
