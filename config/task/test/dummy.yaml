@@ -1,0 +1,3 @@
+_target_: core.task.DummyTask
+name: "ads-ml-argo DummyTask"
+task_id: ${now:%Y-%m-%d_%H-%M-%S}
