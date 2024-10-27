@@ -3,10 +3,11 @@ from typing import Union
 
 import torch
 from transformers import (AutoConfig, AutoTokenizer, OPTForCausalLM,
-                          PretrainedConfig, SpecialTokensMixin,
+                          PretrainedConfig, PreTrainedTokenizer,
                           T5ForConditionalGeneration)
 
 from model.config import ModelConfig
+from model.representation import Representation, get_representation
 from utils import to_absolute_path
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 Model = Union[T5ForConditionalGeneration, OPTForCausalLM]
 
 
-class T5ModelLoader:
+class ModelLoader:
 
     def __init__(self, model_config: ModelConfig):
         self.model_config = model_config
@@ -39,7 +40,7 @@ class T5ModelLoader:
             raise ValueError("Invalid model configuration")
         return model
 
-    def get_tokenizer(self) -> SpecialTokensMixin:
+    def load_tokenizer(self) -> PreTrainedTokenizer:
         tokenizer_config = self.model_config.tokenizer_config
         tokenizer = AutoTokenizer.from_pretrained(self.model_config.name,
                                                   use_fast=True)
@@ -93,8 +94,8 @@ class T5ModelLoader:
                                      replace_additional_special_tokens=False)
         return tokenizer
 
-    def get_model(self) -> Model:
-        tokenizer = self.get_tokenizer()
+    def load_model(self) -> Model:
+        tokenizer = self.load_tokenizer()
         model = self._load_t5_model()
         model.resize_token_embeddings(len(tokenizer))
 
@@ -107,3 +108,7 @@ class T5ModelLoader:
             logger.info(f"Loaded model from checkpoint: {checkpoint_path}")
 
         return model
+
+    def load_representation(self) -> Representation:
+
+        return get_representation(self.model_config.representation_type)

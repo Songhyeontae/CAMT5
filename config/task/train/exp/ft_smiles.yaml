@@ -2,13 +2,11 @@
 
 train_config:
   device: "gpu"
-  seed: 42
-  shot: 1
   do_compile: False
-  batch_size: 128
-  grad_acc: 16
+  batch_size: 48
+  grad_acc: 12
   optim_config:
-    name: adamwscale
+    name: adamw
     weight_decay: 0.0
     base_lr: 1e-3
     total_steps: 50000
@@ -19,29 +17,29 @@ train_config:
 
   eval_config:
     task: "text2mol"
-    every_steps: 1000
-
-  predict_config:
-    every_steps: 1000
+    every_steps: 2500
+    total_steps: 100000
+    eval_results_path: ".eval_results/ft_text2mol_smiles_base_{now:%Y-%m-%d_%H-%M-%S}_stereo.txt"
 
   checkpoint:
     every_steps: 10000
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_smiles_base_${now:%m%d}_stereo
 
   logging_config:
-    every_steps: 1
+    every_steps: 100
     accuracy: true
     grad_l2: true
     weights_l2: true
 
 model_config:
   name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_frag_micro_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"
-  representation: frag
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_smiles_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"  
+  representation_type: smiles
   load_model:
     from_pretrained: true
   tokenizer_config:
     additional_tokens_paths:
-      - "asset/mol_vocabs/frag_stereo.txt"
+      - "asset/mol_vocabs/frag.txt"
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
@@ -56,5 +54,5 @@ data_config:
   add_explanation: False
   tk_instruct: False
   exec_file_path: .data/ni_dataset.py
-  data_dir: .data/splits/mol_text/text2mol_frag_micro_stereo
+  data_dir: .data/splits/mol_text/text2mol_smiles_stereo
   task_dir: .data/tasks

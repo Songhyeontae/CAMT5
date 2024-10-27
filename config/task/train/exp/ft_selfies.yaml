@@ -1,0 +1,56 @@
+# @package task
+
+train_config:
+  device: "gpu"
+  do_compile: False
+  batch_size: 48
+  grad_acc: 12
+  optim_config:
+    name: adamw
+    weight_decay: 0.0
+    base_lr: 1e-3
+    total_steps: 50000
+    grad_clip: 30.0
+    lr_scheduler_config:
+      name: constant
+
+  eval_config:
+    task: "text2mol"
+    every_steps: 2500
+    total_steps: 100000
+    eval_results_path: ".eval_results/ft_text2mol_selfies_base_${now:%Y-%m-%d_%H-%M-%S}_stereo.txt"
+
+  checkpoint:
+    every_steps: 10000
+
+  logging_config:
+    every_steps: 100
+    accuracy: true
+    grad_l2: true
+    weights_l2: true
+
+model_config:
+  name: "google/t5-v1_1-base"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_selfies_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"
+  representation_type: selfies
+  load_model:
+    from_pretrained: true
+  tokenizer_config:
+    additional_tokens_paths:
+      - "asset/mol_vocabs/frag.txt"
+      - "asset/mol_vocabs/selfies.txt"
+
+data_config:
+  num_workers: 8
+  max_seq_len: 512
+  max_target_len: 512
+  max_num_instances_per_task: 100000
+  add_task_name: False
+  add_task_definition: True
+  num_pos_examples: 0
+  num_neg_examples: 0
+  add_explanation: False
+  tk_instruct: False
+  exec_file_path: .data/ni_dataset.py
+  data_dir: .data/splits/mol_text/text2mol_selfies_stereo
+  task_dir: .data/tasks

@@ -34,16 +34,14 @@ class LRScheduler(Enum):
 class EvalConfig:
     task: TestTask
     every_steps: int
-
-
-@dataclasses.dataclass
-class PredictConfig:
-    every_steps: int
+    total_steps: int
+    eval_results_path: Optional[str] = None
 
 
 @dataclasses.dataclass
 class Checkpoint:
     every_steps: int
+    path: Optional[str] = None
 
 
 @dataclasses.dataclass
@@ -59,8 +57,7 @@ class LoggingConfig:
 @dataclasses.dataclass
 class SchedulerConfig:
     name: LRScheduler
-    warmup_steps: int
-
+    warmup_steps: Optional[int] = None
     # for cosine
     final_cosine: Optional[float] = field(default=0.0)
 
@@ -89,8 +86,8 @@ class TrainConfig:
     logging_config: LoggingConfig
 
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
-    predict_config: Optional[PredictConfig] = field(
-        default_factory=PredictConfig)
+    # predict_config: Optional[PredictConfig] = field(
+    #     default_factory=PredictConfig)
     test_bsz_multi: Optional[int] = 1
     do_compile: Optional[bool] = False
 

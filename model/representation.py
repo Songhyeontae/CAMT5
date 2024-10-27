@@ -1,16 +1,22 @@
 import logging
 import re
 from itertools import product
-from typing import NewType, Protocol
+from typing import NewType, Protocol, Tuple
 
 import selfies as sf
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from rdkit.Chem import rdmolops
 from scipy.stats import rankdata
 
+from model.config import RepresentationType
+
 logger = logging.getLogger(__name__)
+RDLogger.DisableLog('rdApp.*')
 
 SMILES = NewType("SMILES", str)
+VALID = NewType("VALID", bool)
+
+DUMMY_SMILES = "C"
 ATOM_FINDER = re.compile(
     r"""
 (
@@ -33,42 +39,60 @@ CHIRAL_TOKENS = {
 }
 
 
-class MolTokenizer(Protocol):
+class Representation(Protocol):
 
-    def encode(self, mol: SMILES) -> str:
+    def encode(self, mol: SMILES, verbose=False) -> str:
         ...
 
-    def decode(self, text_mol: str) -> SMILES:
+    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
         ...
 
 
-class Smiles(MolTokenizer):
+class Smiles(Representation):
 
-    def encode(self, mol: SMILES) -> str:
-        return Chem.MolToSmiles(Chem.MolFromSmiles(mol), kekuleSmiles=True)
+    def encode(self, mol: SMILES, verbose=False) -> str:
+        try:
+            smiles = Chem.MolToSmiles(Chem.MolFromSmiles(mol), kekuleSmiles=True)
+        except:
+            if verbose:
+                logger.warning(f"Failed to encode SMILES: {mol}")
+            smiles = DUMMY_SMILES
+        return smiles
 
-    def decode(self, text_mol: str) -> SMILES:
-        return Chem.MolToSmiles(Chem.MolFromSmiles(text_mol),
+    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
+        valid = True
+        try:
+            smiles = Chem.MolToSmiles(Chem.MolFromSmiles(text_mol),
                                 kekuleSmiles=True)
+        except:
+            valid = False
+            if verbose:
+                logger.warning(f"Failed to decode SMILES: {text_mol}")
+            smiles = DUMMY_SMILES
+        return smiles, valid
 
 
-class Selfies(MolTokenizer):
+class Selfies(Representation):
 
-    def encode(self, mol: SMILES) -> str:
+    def encode(self, mol: SMILES, verbose=False) -> str:
+        del verbose
         return mol
 
-    def decode(self, text_mol: str) -> SMILES:
+    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
         smiles = sf.decoder(text_mol)
+        valid = True
         try:
             mol = Chem.MolFromSmiles(smiles)
         except:
-            logger.warning(f"Failed to decode SELFIES: {text_mol}")
+            valid = False
+            if verbose:
+                logger.warning(f"Failed to decode SELFIES: {text_mol}")
             try:
                 mol = Chem.MolFromSmiles(self._filter_selfies(text_mol))
             except:
-                mol = "C"
+                mol = DUMMY_SMILES
 
-        return Chem.MolToSmiles(mol, kekuleSmiles=True)
+        return Chem.MolToSmiles(mol, kekuleSmiles=True), valid
 
     def _filter_selfies(selfies: str) -> str:
         pattern = r"(\[[^\]]+\]\.?)"
@@ -76,30 +100,43 @@ class Selfies(MolTokenizer):
         return "".join(matches)
 
 
-class Frag(MolTokenizer):
+class Frag(Representation):
 
-    def encode(self, mol: SMILES) -> str:
+    def encode(self, mol: SMILES, verbose=False) -> str:
         try:
             linear_smiles = ""
             for smiles in mol.split("."):
                 linear_smiles += linearize(smiles) + "[.]"
             linear_smiles = linear_smiles[:-3]
         except:
-            logger.warning(f"Failed to encode Frag: {mol}")
+            if verbose:
+                logger.warning(f"Failed to encode Frag: {mol}")
             linear_smiles = "[C]"
         return linear_smiles
 
-    def decode(self, text_mol: str) -> SMILES:
+    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
+        valid = True
         try:
             decoded_smiles = ""
             for smiles in text_mol.split("[.]"):
                 decoded_smiles += decode_linear(smiles) + "."
             decoded_smiles = decoded_smiles[:-1]
         except:
-            logger.warning(f"Failed to decode Frag: {text_mol}")
-            decoded_smiles = "C"
-        return decoded_smiles
+            valid = False
+            if verbose:
+                logger.warning(f"Failed to decode Frag: {text_mol}")
+            decoded_smiles = DUMMY_SMILES
+        return decoded_smiles, valid
 
+def get_representation(representation_type) -> Representation:
+    
+    representation_dict = {
+        RepresentationType.SMILES.value: Smiles,
+        RepresentationType.SELFIES.value: Selfies,
+        RepresentationType.FRAG.value: Frag,
+    }
+    
+    return representation_dict[representation_type]()
 
 def find_order(smile):
     i = 0

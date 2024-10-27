@@ -33,9 +33,7 @@ train_config:
     _target_: train.config.EvalConfig
     task: "text2mol"
     every_steps: 1000
-
-  # predict_config:
-  #   every_steps: 1000
+    total_steps: 10000
 
   checkpoint:
     _target_: train.config.Checkpoint
@@ -51,7 +49,7 @@ train_config:
 model_config:
   _target_: model.config.ModelConfig
   name: "google/t5-v1_1-base"
-  representation: smiles
+  representation_type: smiles
   load_model:
     _target_: model.config.LoadModel
     from_pretrained: true
@@ -74,6 +72,6 @@ data_config:
   add_explanation: False
   tk_instruct: False
   exec_file_path: .data/ni_dataset.py
-  data_dir: .data/splits/mol_text/text2mol_frag_micro_stereo
+  data_dir: .data/splits/mol_text/text2mol_smiles_stereo
   task_dir: .data/tasks
 

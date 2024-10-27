@@ -1,18 +1,20 @@
-from train.config import SchedulerConfig, LRScheduler
-from torch.optim.lr_scheduler import SequentialLR, LinearLR, CosineAnnealingLR, LambdaLR
+import logging
+import math
 
 import torch
-import logging
 import transformers
-import math
+from torch.optim.lr_scheduler import (CosineAnnealingLR, LambdaLR, LinearLR,
+                                      SequentialLR)
+
+from train.config import LRScheduler, SchedulerConfig
 
 logger = logging.getLogger(__name__)
 
-def get_lr_scheduler(optimizer: torch.optim.Optimizer, 
-                     total_steps: int,
-                     base_lr: int,
-                     config: SchedulerConfig) -> torch.optim.lr_scheduler.LRScheduler:
-    
+
+def get_lr_scheduler(
+        optimizer: torch.optim.Optimizer, total_steps: int, base_lr: int,
+        config: SchedulerConfig) -> torch.optim.lr_scheduler.LRScheduler:
+
     # TODO(hyeontae): Remove the hard-coded schedulers
     if config.name == LRScheduler.COSINE.value:
         scheduler1 = LinearLR(
@@ -29,11 +31,9 @@ def get_lr_scheduler(optimizer: torch.optim.Optimizer,
             eta_min=config.final_cosine,
         )
 
-        lr_scheduler = SequentialLR(
-            optimizer,
-            schedulers=[scheduler1, scheduler2],
-            milestones=[config.warmup_steps]
-        )
+        lr_scheduler = SequentialLR(optimizer,
+                                    schedulers=[scheduler1, scheduler2],
+                                    milestones=[config.warmup_steps])
     elif config.name == LRScheduler.LEGACY.value:
         msg = "You are using T5 legacy LR Schedule, it's independent from the optim.base_lr"
         logger.info(msg)
@@ -42,27 +42,21 @@ def get_lr_scheduler(optimizer: torch.optim.Optimizer,
         iters_left_for_optimizer2 = total_steps - num_steps_optimizer1
 
         scheduler1 = LambdaLR(
-            optimizer,
-            lambda step: min(
-                1e-2, 1.0 / math.sqrt(step)
-            ) / base_lr if step else 1e-2 / base_lr
-        )
+            optimizer, lambda step: min(1e-2, 1.0 / math.sqrt(step)) / base_lr
+            if step else 1e-2 / base_lr)
 
         scheduler2 = LinearLR(
             optimizer,
-            start_factor=(
-                min(1e-2, 1.0 / math.sqrt(num_steps_optimizer1)) / base_lr
-            ),
+            start_factor=(min(1e-2, 1.0 / math.sqrt(num_steps_optimizer1)) /
+                          base_lr),
             end_factor=0,
             total_iters=iters_left_for_optimizer2,
             last_epoch=-1,
         )
 
-        lr_scheduler = SequentialLR(
-            optimizer,
-            schedulers=[scheduler1, scheduler2],
-            milestones=[num_steps_optimizer1]
-        )
+        lr_scheduler = SequentialLR(optimizer,
+                                    schedulers=[scheduler1, scheduler2],
+                                    milestones=[num_steps_optimizer1])
     elif config.name == LRScheduler.CONSTANT.value:
 
         lr_scheduler = transformers.get_scheduler(

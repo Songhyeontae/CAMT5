@@ -20,4 +20,5 @@ class App(BaseTaskCls):
         self.model_config = ModelConfig(**model_config)
 
     def run(self, **kwargs):
+        #TODO(hyeontae): Implement run method
         pass

@@ -1,28 +1,32 @@
-import torch
-import logging
-import time
-import evaluate
-import os
-import tqdm
-from typing import Dict, Union, Optional
-from model.loader import T5ModelLoader, Model
 import dataclasses
+import logging
+import os
+import time
+from itertools import islice
+from typing import Dict, List, Optional, Tuple, Union
 
-from model.config import ModelConfig
-from train.config import TrainConfig, Device, TestTask
-from train.utils import Averager
-
-from torch.utils.data import DataLoader
-from transformers import SpecialTokensMixin
-from transformers.modeling_outputs import Seq2SeqLMOutput, CausalLMOutputWithPast
+import evaluate
+import torch
 from accelerate import Accelerator
 from datasets.iterable_dataset import IterableDataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import PreTrainedTokenizer
+from transformers.modeling_outputs import (CausalLMOutputWithPast,
+                                           Seq2SeqLMOutput)
 
+from metrics.text2mol_metrics import get_text2mol_metrics
+from model.loader import Model
+from model.representation import Representation, Selfies
+from train.config import DataConfig, Device, TestTask, TrainConfig
 from train.optimizer import get_optimizer
 from train.scheduler import get_lr_scheduler
+from train.utils import Averager
+from utils import to_absolute_path
 
 Output = Union[Seq2SeqLMOutput, CausalLMOutputWithPast]
 logger = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass
 class CurrentState:
@@ -30,94 +34,175 @@ class CurrentState:
     train_epoch: int
     last_log: float
 
+
+@dataclasses.dataclass
+class GenerationResult:
+    predictions: torch.Tensor
+    scores: Optional[torch.Tensor] = None
+
+
 class Trainer:
-    def __init__(self, train_config: TrainConfig):
+
+    def __init__(self, config: TrainConfig, data_config: DataConfig):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-        
-        self.config = train_config
+
+        self.config = config
+        self.data_config = data_config
         # Averager for logging
         self.average_logger = Averager()
-     
+
     def train(
         self,
-        model: Model, 
-        tokenizer: SpecialTokensMixin,
-        train_dataloader: DataLoader, 
-        test_dataloader: DataLoader, 
+        model: Model,
+        tokenizer: PreTrainedTokenizer,
+        representation: Representation,
+        train_dataloader: DataLoader,
+        test_dataloader: DataLoader,
         eval_dataloader: DataLoader = None,
     ):
         accelerator = Accelerator(
-            cpu = (self.config.device == Device.CPU.value),
-        )
-        
+            cpu=(self.config.device == Device.CPU.value), )
+
         logging.info(f"Using {accelerator.device}")
-        
+
         optim_config = self.config.optim_config
         optimizer = get_optimizer(model, optim_config)
-        
+
         lr_scheduler_config = optim_config.lr_scheduler_config
-        lr_scheduler = get_lr_scheduler(
-            optimizer, 
-            optim_config.total_steps, 
-            optim_config.base_lr,
-            lr_scheduler_config
-        )
-        
+        lr_scheduler = get_lr_scheduler(optimizer, optim_config.total_steps,
+                                        optim_config.base_lr,
+                                        lr_scheduler_config)
+
         # Prepare distributed training, mixed precision, etc.
         model, optimizer, lr_scheduler, train_dataloader = accelerator.prepare(
-            model, optimizer, lr_scheduler, train_dataloader
-        )
-        
+            model, optimizer, lr_scheduler, train_dataloader)
+
         if self.config.do_compile:
             torch.compile(model)
-        
+
         # Set the initial state of the training
         self.current_state = CurrentState(
             train_step=1,
             train_epoch=1,
             last_log=time.time(),
         )
-        
+
         self._train(
             model=model,
+            tokenizer=tokenizer,
+            representation=representation,
             train_dataloader=train_dataloader,
             validation_dataloader=eval_dataloader,
-            test_dataloader=test_dataloader,
             accelerator=accelerator,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
-            tokenizer=tokenizer,
         )
-        
-        self.evaluate()
 
-    def predict(self):
-        pass
-    
+        self.evaluate(
+            dataloader=test_dataloader,
+            model=model,
+            tokenizer=tokenizer,
+            representation=representation,
+            accelerator=accelerator,
+            prefix="test",
+        )
+
     def evaluate(
         self,
         dataloader: DataLoader,
         model: Model,
-        tokenizer: SpecialTokensMixin,
+        tokenizer: PreTrainedTokenizer,
+        representation: Representation,
         accelerator: Accelerator,
-        ):
+        prefix: str = "validation",
+    ):
         #TODO(hyeontae): Implement evaluation
-        pass
-    
+        eval_config = self.config.eval_config
+        test_task = eval_config.task
+        total_steps = eval_config.total_steps
+
+        metric = TaskHelper.set_task_metrics(test_task)
+
+        def decode(preds: torch.Tensor) -> List[torch.Tensor]:
+            #TODO(hyeontae): Check the logic
+            preds[preds == -100] = tokenizer.pad_token_id
+            preds = tokenizer.batch_decode(preds,
+                                           skip_special_tokens=True,
+                                           clean_up_tokenization_spaces=True)
+            preds = [pred.strip() for pred in preds]
+            return preds
+
+        input_total, reference_total, prediction_total = [], [], []
+        samples_seen = 0
+
+        for step, batch in tqdm(enumerate(islice(dataloader, total_steps)),
+                                total=total_steps):
+            batch = batch.to(accelerator.device)
+            generation_result = TaskHelper.generate_results(
+                test_task, model, self.data_config, batch)
+
+            decoded_inputs = decode(batch["input_ids"])
+            decoded_references = decode(batch["labels"])
+            decoded_predictions = decode(generation_result.predictions)
+
+            parsed_inputs, parsed_predictions, parsed_references, is_valid =\
+                TaskHelper.parse(
+                    test_task,
+                    representation,
+                    decoded_inputs,
+                    decoded_predictions,
+                    decoded_references,
+                    generation_result.scores,
+                )
+
+            # If we are in a multiprocess environment, the last batch has duplicates
+            if step == len(dataloader) - 1:
+                parsed_predictions = parsed_predictions[:len(dataloader.dataset
+                                                             ) - samples_seen]
+                parsed_references = parsed_references[:len(dataloader.dataset
+                                                           ) - samples_seen]
+            else:
+                samples_seen += len(parsed_references)
+
+            # Update metrics
+            metric.add_batch(
+                predictions=parsed_predictions,
+                references=parsed_references,
+            )
+
+            input_total.extend(parsed_inputs)
+            reference_total.extend(parsed_references)
+            prediction_total.extend(parsed_predictions)
+
+        eval_metric = metric.compute()
+
+        #TODO(hyeontae): Implement Custom Metrics (RDK, MACCS, Morgan, etc.)
+        eval_metric.update(
+            TaskHelper.set_additional_metrics(
+                test_task,
+                prediction_total,
+                reference_total,
+                is_valid,
+            ))
+        self._log_stats(eval_metric, prefix=prefix)
+        if eval_config.eval_results_path is not None:
+            self._write_eval_results(prefix, eval_metric)
+
     def _train(
         self,
         model: Model,
+        tokenizer: PreTrainedTokenizer,
+        representation: Representation,
         train_dataloader: DataLoader,
         validation_dataloader: Optional[DataLoader],
         accelerator: Accelerator,
         optimizer: torch.optim.Optimizer,
         lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
-        tokenizer: SpecialTokensMixin,
     ):
         # Set Model to train mode
         model.train()
-        
+
         current_state = self.current_state
         optim_config = self.config.optim_config
 
@@ -129,19 +214,20 @@ class Trainer:
 
             # In case there is a remainder from previous epoch, we need to reset the optimizer
             optimizer.zero_grad(set_to_none=True)
-            
+
             for batch_id, batch in enumerate(train_dataloader, start=1):
                 if current_state.train_step > optim_config.total_steps:
                     break
-                
+
                 outputs: Output = model(**batch)
                 loss = outputs.loss
-                self.average_logger.update({'loss': loss.detach().float().item()})
+                self.average_logger.update(
+                    {'loss': loss.detach().float().item()})
                 accelerator.backward(loss / self.config.grad_acc)
 
                 if batch_id % self.config.grad_acc == 0:
                     self._update_metrics(model, batch, outputs)
-                    
+
                     if self.config.optim_config.grad_clip > 0:
                         # clip grad norm
                         accelerator.clip_grad_norm_(
@@ -155,11 +241,13 @@ class Trainer:
                     # log hyperparameters
                     lr = optimizer.param_groups[0]['lr']
                     self.average_logger.update({'lr': lr})
-                    
+
                     # reset gradients
                     optimizer.zero_grad(set_to_none=True)
+
+                    # log metrics, hyperparameters
                     self._maybe_log_metrics()
-                    
+
                     # evaluate and save checkpoint
                     if accelerator.is_main_process:
                         if self.config.eval_config != None:
@@ -167,538 +255,243 @@ class Trainer:
                                 dataloader=validation_dataloader,
                                 model=model,
                                 tokenizer=tokenizer,
+                                representation=representation,
                                 accelerator=accelerator,
                             )
-                            
-                        self._maybe_save_checkpoint(
-                            accelerator,
-                        )
-                            
+
+                        self._maybe_save_checkpoint(accelerator, )
+
                     accelerator.wait_for_everyone()
                     current_state.train_step += 1
             current_state.train_epoch += 1
 
-    def _update_metrics(self, model: Model, batch: Dict[str, torch.Tensor], outputs: Output):
+    def _update_metrics(self, model: Model, batch: Dict[str, torch.Tensor],
+                        outputs: Output):
         metrics = {}
-        
+
         # TODO(hyeontae): Remove hard-coded metrics
         if self.config.logging_config.accuracy:
-            correct = (outputs.logits.argmax(-1) == batch["labels"]).sum().item()
+            correct = (
+                outputs.logits.argmax(-1) == batch["labels"]).sum().item()
             accuracy = correct / batch["labels"].numel()
             metrics['accuracy'] = accuracy
-            
+
         if self.config.logging_config.grad_l2:
-            grad_l2 = (
-                sum(p.grad.detach().data.norm(2).item() ** 2 for p in model.parameters()) ** 0.5
-            )
+            grad_l2 = (sum(p.grad.detach().data.norm(2).item()**2
+                           for p in model.parameters())**0.5)
             metrics['grad_l2'] = grad_l2
-            
+
         if self.config.logging_config.weights_l2:
-            weights_l2 = sum(p.detach().norm(2).item() ** 2 for p in model.parameters()) ** 0.5
+            weights_l2 = sum(p.detach().norm(2).item()**2
+                             for p in model.parameters())**0.5
             metrics['weights_l2'] = weights_l2
-            
+
         self.average_logger.update(metrics)
 
     def _maybe_log_metrics(self):
         if self.current_state.train_step % self.config.logging_config.every_steps != 0:
-            return 
+            return
 
-        seconds_per_step = (time.time() - self.current_state.last_log) / self.config.logging_config.every_steps
+        seconds_per_step = (time.time() - self.current_state.last_log
+                            ) / self.config.logging_config.every_steps
 
         self.average_logger.update({"time_per_step": seconds_per_step})
         averaged_metrics = self.average_logger.average()
 
-        msg_start = f'[train] Step {self.current_state.train_step} out of {self.config.optim_config.total_steps}' + ' | '
-        dict_msg = ' | '.join([f'{k.capitalize()} --> {v:.6f}' for k, v in averaged_metrics.items()]) + ' | '
+        self._log_stats(averaged_metrics, prefix='train')
+        self.current_state.last_log = time.time()
+
+    def _log_stats(self, stats: Dict[str, float], prefix: str):
+        msg_start = f'[{prefix}] Step {self.current_state.train_step} out of {self.config.optim_config.total_steps}' + ' | '
+        dict_msg = ' | '.join(
+            [f'{k.capitalize()} --> {v:.6f}'
+             for k, v in stats.items()]) + ' | '
 
         msg = msg_start + dict_msg
         logger.info(msg)
 
-        self.current_state.last_log = time.time()
+    def _write_eval_results(self, prefix: str, eval_results: Dict[str, float]):
+        eval_result_path = to_absolute_path(
+            self.config.eval_config.eval_results_path)
+        eval_dir, _ = os.path.split(eval_result_path)
+        os.makedirs(eval_dir, exist_ok=True)
+
+        with open(eval_result_path, 'a') as f:
+            msg = f'[{prefix}] Step {self.current_state.train_step} out of {self.config.optim_config.total_steps}' + ' | '
+            dict_msg = ' | '.join([
+                f'{k.capitalize()} --> {v:.6f}'
+                for k, v in eval_results.items()
+            ]) + ' | '
+            msg = msg + dict_msg
+            f.write(msg + '\n')
 
     def _maybe_validate(self, **kwargs):
-        if (
-            self.current_state.train_step > self.config.optim_config.total_steps
-            or self.current_state.train_step % self.config.predict_config.every_steps == 0
-        ):
+        if (self.current_state.train_step >
+                self.config.optim_config.total_steps
+                or self.current_state.train_step %
+                self.config.eval_config.every_steps == 0):
             self.evaluate(
-                **kwargs
+                **kwargs,
+                prefix='validation',
             )
-            
+
     def _maybe_save_checkpoint(self, accelerator: Accelerator):
-        if (
-            self.current_state.train_step > self.config.optim_config.total_steps
-            or self.current_state.train_step % self.config.checkpoint.every_steps == 0
-        ):
+        if (self.current_state.train_step >
+                self.config.optim_config.total_steps
+                or self.current_state.train_step %
+                self.config.checkpoint.every_steps == 0):
+
             output_dir = f'checkpoint-{self.current_state.train_step}'
+            if self.config.checkpoint.path is not None:
+                output_dir = os.path.join(self.config.checkpoint.path,
+                                          output_dir)
+                output_dir = to_absolute_path(output_dir)
+
             accelerator.save_state(output_dir=output_dir)
 
+
 def validate_config(config: TrainConfig):
-        pass
-    
-def load_model(model_config: ModelConfig) -> Model:
-    model_loader = T5ModelLoader(model_config)
-    return model_loader.get_model()
-
-def load_tokenizer(model_config: ModelConfig):
-    model_loader = T5ModelLoader(model_config)
-    return model_loader.get_tokenizer()
-
-# def predict(
-#     model: Model, 
-#     dataloader: DataLoader,
-#     config: TrainConfig,
-#     tokenizer: SpecialTokensMixin,
-#     accelerator: Accelerator,
-#     prefix:str='test'
-# ):
-#     config.current_state.last_log = time.time()
-
-#     if config.test_task == TestTask.MOL2TEXT:
-#         metric = evaluate.load(os.path.join(__file__.split('biot5/utils')[0], 'biot5/metrics/translation_metrics'))
-#     elif config.test_task == TestTask.TEXT2MOL:
-#         metric = evaluate.load(os.path.join(__file__.split('biot5/utils')[0], 'biot5/metrics/save_only_metrics'))
-#     elif config.test_task == TestTask.TEXT2FRAG:
-#         metric = evaluate.load(os.path.join(__file__.split('biot5/utils')[0], 'biot5/metrics/save_only_metrics'))
-#     elif config.test_task in [TestTask.DTI , TestTask.PEER, TestTask.MOLNET]:
-#         metric = evaluate.load(os.path.join(__file__.split('biot5/utils')[0], 'biot5/metrics/dti_metrics'))
-#     else:
-#         raise ValueError("Invalid test task")
-    
-#     samples_seen = 0
-#     selfies_invalid = 0
-
-#     def decode(preds):
-#         preds[preds == -100] = tokenizer.pad_token_id
-#         preds = tokenizer.batch_decode(
-#             preds, skip_special_tokens=True, clean_up_tokenization_spaces=True
-#         )
-        
-#         preds = [pred.strip() for pred in preds]
-        
-#         return preds
-
-#     prediction_total = []
-#     reference_total = []
-#     input_total = []
+    #TODO(hyeontae): Implement validation logic
+    pass
 
 
-#     for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
-#         batch = batch.to(accelerator.device)
-#         if step == 100:
-#             break
-#         if config.test_task in [TestTask.DTI , TestTask.PEER, TestTask.MOLNET]:
-#             generation_results = model.generate(
-#                 input_ids=batch['input_ids'],
-#                 attention_mask=batch['attention_mask'],
-#                 max_length=args.data.max_target_len,
-#                 generation_config=model.generation_config,
-#                 return_dict_in_generate=True,
-#                 output_scores=True,
-#             )
-#             predictions, scores = generation_results.sequences, generation_results.scores
-#         else:
-#             if "galactica" in args.model.name:
-#                 predictions = model.generate(
-#                     input_ids=batch['input_ids'],
-#                     attention_mask=batch['attention_mask'],
-#                     max_length=args.data.max_target_len,
-#                 )
-#             else:
-#                 predictions = model.generate(
-#                     input_ids=batch['input_ids'],
-#                     attention_mask=batch['attention_mask'],
-#                     max_length=args.data.max_target_len,
-#                     # generation_config=model.generation_config,
-#                 )
-#         predictions = decode(predictions)
-#         references = decode(batch["labels"])
-        
-#         # print(batch["labels"])
-#         # print(references)
-#         # raise dd
-        
-#         inputs = decode(batch["input_ids"])
-        
-#         # if prefix == "test":
-#         #     print(inputs[0])
-#         #     print(batch['input_ids'][0])
-#         #     print(batch['attention_mask'][0])
-#         #     raise dd
+class TaskHelper:
 
-        
-#         if args.test_task == 'mol2text':
-#             if args.representation == "selfies":
-#                 # inputs = [sf.decoder(input_i.split('- Input: ')[-1].split(' Output:')[0]) for input_i in inputs]
-#                 inputs = [input_i.split('- Input: ')[-1].split(' Output:')[0] for input_i in inputs]
-            
-#             elif args.representation == "smiles":
-#                 inputs = [input_i.split('- Input: ')[-1].split(' Output:')[0] for input_i in inputs]
+    @staticmethod
+    def set_task_metrics(test_task: TestTask) -> evaluate.Metric:
+        task_metric_path_dict = {
+            TestTask.MOL2TEXT.value: "metrics/translation_metrics",
+            TestTask.TEXT2MOL.value: "metrics/save_only_metrics",
+            TestTask.TEXT2FRAG.value: "metrics/save_only_metrics",
+            TestTask.DTI.value: "metrics/dti_metrics",
+            TestTask.PEER.value: "metrics/dti_metrics",
+            TestTask.MOLNET.value: "metrics/dti_metrics",
+        }
+        if test_task not in task_metric_path_dict:
+            raise ValueError(f"Invalid test task: {test_task}")
 
-#             elif args.representation == "frag":
-#                 inputs = [input_i.split('- Input: ')[-1].split(' Output:')[0] for input_i in inputs]
-#                 # tmp_inputs = []
-#                 # for input_i in inputs:
-#                 #     input_i = input_i.split('- Input: ')[-1].split(' Output:')[0]
-                    
-#                 #     result_smiles = ""
-#                 #     for smiles in input_i.split("[.]"):
-#                 #         result_smiles += decode_linear(smiles).split(".")[0] + "."
-#                 #     result_smiles = result_smiles[:-1]
-                    
-#                 #     tmp_inputs.append(result_smiles)
-#                 # inputs = tmp_inputs
-#             for input_i in inputs:
-#                 input_total.append(input_i)
-                    
-                    
-                    
+        metric = evaluate.load(
+            to_absolute_path(task_metric_path_dict[test_task]))
+        return metric
 
-#             references = [(references[i], inputs[i]) for i in range(len(references))]
-#         elif args.test_task == 'text2mol':
-            
-#             inputs = [input_i.split('- Input: ')[-1].split(' Output:')[0] for input_i in inputs]
+    @staticmethod
+    def generate_results(test_task: TestTask, model: Model,
+                         data_config: DataConfig,
+                         batch: Dict[str, torch.Tensor]) -> GenerationResult:
+        generation_result = GenerationResult(predictions=None, scores=None)
 
-#             for i in range(len(predictions)):
-#                 if args.representation == "selfies":
-#                     try: 
-#                         predictions[i] = Chem.MolToSmiles(Chem.MolFromSmiles(sf.decoder(predictions[i])), kekuleSmiles=True)
-                        
-#                     except:
-#                         # predictions[i] = sf.decoder(filter_selfies(predictions[i]))
-#                         selfies_invalid += 1
-#                 elif args.representation == "smiles":
-                    
-#                     continue
-#                 elif args.representation == "frag":
-#                     frags = []
-#                     opened = 0
-#                     tmp_frag = ""
-#                     try:
-#                         result_smiles = ""
-#                         for smiles in predictions[i].split("[.]"):
-#                             result_smiles += decode_linear(smiles) + "."
-#                         result_smiles = result_smiles[:-1]
-#                         predictions[i] = result_smiles
-#                     except:
-#                         predictions[i] = "C"
-                
-                
-#             references = [sf.decoder(ref_i) for ref_i in references]
-#             references = [Chem.MolToSmiles(Chem.MolFromSmiles(ref), kekuleSmiles=True) for ref in references]
-            
-#             references = [(references[i], inputs[i]) for i in range(len(references))]
-            
-            
-                
-            
+        #TODO(hyeontae): Remove hard-coded test tasks
+        if test_task in [
+                TestTask.DTI.value, TestTask.PEER.value, TestTask.MOLNET.value
+        ]:
+            results = model.generate(
+                input_ids=batch['input_ids'],
+                attention_mask=batch['attention_mask'],
+                max_length=data_config.max_target_len,
+                generation_config=model.generation_config,
+                return_dict_in_generate=True,
+                output_scores=True,
+            )
+            generation_result.predictions = results.sequences
+            generation_result.scores = results.scores
+        else:
+            generation_result.predictions = model.generate(
+                input_ids=batch['input_ids'],
+                attention_mask=batch['attention_mask'],
+                max_length=data_config.max_target_len,
+            )
 
-#         elif args.test_task == 'dti' or args.test_task == 'peer' or args.test_task == 'molnet':
-#             # No: 465, Yes: 2163
-#             predictions = [(scores[0][i][2163] / (scores[0][i][2163] + scores[0][i][465])).item() for i in range(len(predictions))]
-#         else:
-#             raise NotImplementedError
+        return generation_result
 
-#         # If we are in a multiprocess environment, the last batch has duplicates
-#         if step == len(dataloader) - 1:
-#             predictions = predictions[: len(dataloader.dataset) - samples_seen]
-#             references = references[: len(dataloader.dataset) - samples_seen]
-#         else:
-#             samples_seen += len(references)
+    @staticmethod
+    def parse(
+        test_task: TestTask,
+        representation: Representation,
+        inputs: List[torch.Tensor],
+        predictions: List[torch.Tensor],
+        references: List[torch.Tensor],
+        scores: Optional[torch.Tensor] = None,
+    ) -> Tuple[List[str], List[str], List[str], int]:
 
-        
-#         for ref in references:
-#             reference_total.append(ref)
-#         for pred in predictions:
-#             prediction_total.append(pred)
-#         metric.add_batch(
-#             predictions=predictions,
-#             references=references,
-#         )
+        # TODO(hyeontae): Remove hard-coded logic
+        assert len(inputs) == len(predictions) == len(references)
 
+        parsed_inputs, parsed_predictions, parsed_references, is_valid \
+            = None, None, None, None
 
-#         # TODO for debug
-#         # if step == 20:
-#         #     break
-        
+        # Mol2Text, Only parse inputs
+        if test_task == TestTask.MOL2TEXT.value:
+            parsed_inputs = [
+                input.split('- Input: ')[-1].split(' Output:')[0]
+                for input in inputs
+            ]
+            parsed_predictions = predictions
+            parsed_references = references
+            is_valid = [True for _ in range(len(parsed_predictions))]
 
-#     eval_metric = metric.compute(tsv_path=os.path.join(args.working_dir, args.result_fn))
+        # Text2Mol, Parse inputs, predictions, representations
+        elif test_task == TestTask.TEXT2MOL.value:
+            parsed_inputs = [
+                input.split('- Input: ')[-1].split(' Output:')[0]
+                for input in inputs
+            ]
 
-#     assert len(prediction_total) == len(reference_total)
-#     if args.test_task == 'text2mol':
-#         s_RDK_list = []
-#         s_MACCS_list = []
-#         s_Morgan_list = []
-#         exact_canon_list = []
-#         invalid = 0
-#         method = args.data.data_dir.split("/")[-1].split()[0]
-#         model_size = args.model.name.split("-")[-1].split()[0]
-#         with open(f"/home/osikjs/BioT5/biot5/train_predictions/eval_fts_ref_{args.current_train_step}_{method}_{model_size}_{args.wandb_name}.txt", "wb") as g:
-#             for i in range(len(prediction_total)):
-#                 gen = Chem.MolFromSmiles(prediction_total[i])
-#                 if gen == None:
-#                     gen = Chem.MolFromSmiles("C")
-#                 target_mol = Chem.MolFromSmiles(reference_total[i][0])
-                
-#                 # Chem.RemoveStereochemistry(gen)
-#                 # Chem.RemoveStereochemistry(target_mol)
+            parsed_predictions = []
+            is_valid = []
+            for prediction in predictions:
+                parsed_prediction, valid = representation.decode(prediction)
+                is_valid.append(valid)
+                parsed_predictions.append(parsed_prediction)
 
-#                 gen_smiles = Chem.MolToSmiles(gen)
-#                 target = Chem.MolToSmiles(target_mol)
+            # TODO(hyeontae): check references are SELFIES format
+            selfies = Selfies()
+            parsed_references = [
+                selfies.decode(reference) for reference in references
+            ]
 
+        # Only parse predictions
+        elif test_task in [
+                TestTask.DTI.value, TestTask.PEER.value, TestTask.MOLNET.value
+        ]:
+            # No: 465, Yes: 2163
+            parsed_predictions = [
+                (scores[0][i][2163] /
+                 (scores[0][i][2163] + scores[0][i][465])).item()
+                for i in range(len(predictions))
+            ]
+            parsed_inputs = inputs
+            parsed_references = references
+            is_valid = [True for _ in range(len(parsed_predictions))]
+        else:
+            raise ValueError(f"Invalid test task: {test_task}")
 
-#                 target_fp_RDK = FingerprintMols.GetRDKFingerprint(target_mol)
-#                 gen_fp_RDK = FingerprintMols.GetRDKFingerprint(gen)
+        return parsed_inputs, parsed_predictions, parsed_references, is_valid
 
-#                 target_fp_MACCS = MACCSkeys.GenMACCSKeys(target_mol)
-#                 gen_fp_MACCS = MACCSkeys.GenMACCSKeys(gen)
-
-#                 fpgen = AllChem.GetMorganGenerator(radius=2)
-
-#                 target_fp_Morgan = fpgen.GetSparseCountFingerprint(target_mol)
-#                 gen_fp_Morgan = fpgen.GetSparseCountFingerprint(gen)
-                
-#                 s_RDK = DataStructs.TanimotoSimilarity(gen_fp_RDK,target_fp_RDK)
-#                 s_MACCS = DataStructs.TanimotoSimilarity(gen_fp_MACCS,target_fp_MACCS)
-#                 s_Morgan = DataStructs.TanimotoSimilarity(gen_fp_Morgan,target_fp_Morgan)
-                
-#                 g.write(f"{reference_total[i][1]}\t{target}\t{gen_smiles}\t{s_RDK}\t{s_MACCS}\t{s_Morgan}\n".encode('utf-8'))
-
-#                 if gen_smiles != "C":
-#                     s_RDK_list.append(s_RDK)
-#                     s_MACCS_list.append(s_MACCS)
-#                     s_Morgan_list.append(s_Morgan)
-#                     try:
-#                         score =  Chem.MolToInchi(Chem.MolFromSmiles(gen_smiles)) == Chem.MolToInchi(Chem.MolFromSmiles(target))
-#                     except:
-#                         score = 0
-#                     exact_canon_list.append(int(score))
-#                 else:
-#                     invalid += 1
-#                     s_RDK_list.append(0)
-#                     s_MACCS_list.append(0)
-#                     s_Morgan_list.append(0)
-#                     exact_canon_list.append(0)
-                
-
-
-#             avg_RDK = sum(s_RDK_list)/len(s_RDK_list)
-#             avg_MACCS = sum(s_MACCS_list)/len(s_MACCS_list)
-#             avg_Morgan = sum(s_Morgan_list)/len(s_Morgan_list)
-#             exact_canon = sum(exact_canon_list)/len(exact_canon_list)
-
-#             g.write(f"RDK FTS: {avg_RDK}\n".encode('utf-8'))
-#             g.write(f"MACCS FTS: {avg_MACCS}\n".encode('utf-8'))
-#             g.write(f"Morgan FTS: {avg_Morgan}\n".encode('utf-8'))
-#             g.write(f"Exact: {exact_canon}\n".encode('utf-8'))
-
-#             g.write(f'Invalid: {invalid}\n'.encode('utf-8'))
-#         if prefix == "validation":
-#             wandb.log({"validation_RDK": avg_RDK})
-#             wandb.log({"validation_MACCS": avg_MACCS})
-#             wandb.log({"validation_Morgan": avg_Morgan})
-#             wandb.log({"validation_Exact": exact_canon})
-#             wandb.log({"validation_Invalid": invalid})
-#         if prefix == "test":
-#             wandb.log({"test_RDK": avg_RDK})
-#             wandb.log({"test_MACCS": avg_MACCS})
-#             wandb.log({"test_Morgan": avg_Morgan})
-#             wandb.log({"test_Exact": exact_canon})
-#             wandb.log({"test_Invalid": invalid})
-#     if args.test_task == 'mol2text':
-
-#         s_rouge1_list = []
-#         s_rouge2_list = []
-#         s_rougel_list = []
-#         s_meteor_list = []
-        
-#         method = args.data.data_dir.split("/")[-1].split()[0]
-#         model_size = args.model.name.split("-")[-1].split()[0]
-#         with open(f"/home/osikjs/BioT5/biot5/train_predictions/mol2text_eval_fts_ref_{args.current_train_step}_{method}_{model_size}_{args.wandb_name}.txt", "wb") as g:
-#             references = [reference_total[i][0] for i in range(len(reference_total))]
-#             predictions = prediction_total
-#             text_tokenizer = BertTokenizerFast.from_pretrained('allenai/scibert_scivocab_uncased')
-
-#             meteor_scores = []
-
-#             refs = []
-#             preds = []
-
-#             for gt, out in zip(references, predictions):
-
-#                 gt_tokens = text_tokenizer.tokenize(gt, truncation=True, max_length=512,
-#                                                     padding='max_length')
-#                 gt_tokens = list(filter(('[PAD]').__ne__, gt_tokens))
-#                 gt_tokens = list(filter(('[CLS]').__ne__, gt_tokens))
-#                 gt_tokens = list(filter(('[SEP]').__ne__, gt_tokens))
-
-#                 out_tokens = text_tokenizer.tokenize(out, truncation=True, max_length=512,
-#                                                     padding='max_length')
-#                 out_tokens = list(filter(('[PAD]').__ne__, out_tokens))
-#                 out_tokens = list(filter(('[CLS]').__ne__, out_tokens))
-#                 out_tokens = list(filter(('[SEP]').__ne__, out_tokens))
-
-#                 refs.append([gt_tokens])
-#                 preds.append(out_tokens)
-
-#                 mscore = meteor_score([gt_tokens], out_tokens)
-#                 meteor_scores.append(mscore)
-
-
-#             _meteor_score = np.mean(meteor_scores)
-
-#             scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'])
-
-#             rouge_scores = []
-
-#             refs = []
-#             preds = []
-
-#             for gt, out in zip(references, predictions):
-
-#                 rs = scorer.score(out, gt)
-#                 rouge_scores.append(rs)
-
-#             # rouge_1 = np.mean([rs['rouge1'].fmeasure for rs in rouge_scores])
-#             # rouge_2 = np.mean([rs['rouge2'].fmeasure for rs in rouge_scores])
-#             # rouge_l = np.mean([rs['rougeL'].fmeasure for rs in rouge_scores])
-#             i= 0
-            
-#             for rs, meteor in zip(rouge_scores, meteor_scores):
-#                 s_rouge1 = rs['rouge1'].fmeasure
-#                 s_rouge2 = rs['rouge2'].fmeasure
-#                 s_rougel = rs['rougeL'].fmeasure
-#                 s_meteor = meteor
-#                 g.write(f"Input: {input_total[i]}\tReference: {references[i]}\tPrediction: {predictions[i]}\t{s_rouge1}\t{s_rouge2}\t{s_rougel}\t{s_meteor}\n".encode('utf-8'))
-#                 s_rouge1_list.append(s_rouge1)
-#                 s_rouge2_list.append(s_rouge2)
-#                 s_rougel_list.append(s_rougel)
-#                 s_meteor_list.append(s_meteor)
-#                 i+= 1
-
-                
-
-#             avg_rouge1 = sum(s_rouge1_list)/len(s_rouge1_list)
-#             avg_rouge2 = sum(s_rouge2_list)/len(s_rouge2_list)
-#             avg_rougel = sum(s_rougel_list)/len(s_rougel_list)
-#             avg_meteor = sum(s_meteor_list)/len(s_meteor_list)
-            
-
-#             g.write(f"Rouge-1: {avg_rouge1}\n".encode('utf-8'))
-#             g.write(f"Rouge-2: {avg_rouge2}\n".encode('utf-8'))
-#             g.write(f"Rouge-L: {avg_rougel}\n".encode('utf-8'))
-#             g.write(f"Meteor: {avg_meteor}\n".encode('utf-8'))
-
-
-#         if prefix == "validation":
-#             wandb.log({"validation_bleu2": eval_metric["bleu2"]})
-#             wandb.log({"validation_bleu4": eval_metric["bleu4"]})
-#             wandb.log({"validation_rouge1": eval_metric["rouge1"]})
-#             wandb.log({"validation_rogue2": eval_metric["rouge2"]})
-#             wandb.log({"validation_rougeL": eval_metric["rougeL"]})
-#             wandb.log({"validation_meteor": eval_metric["meteor"]})
-#         if prefix == "test":
-#             wandb.log({"test_bleu2": eval_metric["bleu2"]})
-#             wandb.log({"test_bleu4": eval_metric["bleu4"]})
-#             wandb.log({"test_rouge1": eval_metric["rouge1"]})
-#             wandb.log({"test_rogue2": eval_metric["rouge2"]})
-#             wandb.log({"test_rougeL": eval_metric["rougeL"]})
-#             wandb.log({"test_meteor": eval_metric["meteor"]})
-#         logger.log_stats(
-#             stats={
-#                 "bleu2": eval_metric["bleu2"],
-#                 "bleu4": eval_metric["bleu4"],
-#                 "rouge1": eval_metric["rouge1"],
-#                 "rouge2": eval_metric["rouge2"],
-#                 "rougeL": eval_metric["rougeL"],
-#                 "meteor": eval_metric["meteor"],
-#                 "time": time.time() - args.last_log,
-#             },
-#             step=args.current_train_step,
-#             args=args,
-#             prefix=f"{prefix}/",
-#         )
-#     elif args.test_task == 'text2mol':
-#         logger.log_stats(
-#             stats={
-#                 "bleu": eval_metric["bleu"],
-#                 "exact_match": eval_metric["exact_match"],
-#                 "levenshtein": eval_metric["levenshtein"],
-#                 "validity": eval_metric["validity"],
-#                 "invalid selfies num": selfies_invalid,
-#                 "RDK" : avg_RDK,
-#                 "MACCS" : avg_MACCS,
-#                 "Morgan" : avg_Morgan,
-#                 "exact" : exact_canon,
-#                 "time": time.time() - args.last_log,
-#             },
-#             step=args.current_train_step,
-#             args=args,
-#             prefix=f"{prefix}/",
-#         )
-#     elif args.test_task == 'text2frag':
-#         logger.log_stats(
-#             stats={
-#                 "bleu": eval_metric["bleu"],
-#                 "exact_match": eval_metric["exact_match"],
-#                 "levenshtein": eval_metric["levenshtein"],
-#                 "validity": eval_metric["validity"],
-#                 "invalid selfies num": selfies_invalid,
-#                 "time": time.time() - args.last_log,
-#             },
-#             step=args.current_train_step,
-#             args=args,
-#             prefix=f"{prefix}/",
-#         )
-#     elif args.test_task == 'dti' or args.test_task == 'peer' or args.test_task == 'molnet':
-#         logger.log_stats(
-#             stats={
-#                 "accuracy": eval_metric["accuracy"],
-#                 "auroc": eval_metric["auroc"],
-#                 "auprc": eval_metric["auprc"],
-#                 "sensitivity": eval_metric["sensitivity"],
-#                 "specificity": eval_metric["specificity"],
-#                 "f1": eval_metric["f1"],
-#                 "thred_optim": eval_metric["thred_optim"],
-#                 "precision": eval_metric["precision"],
-#                 "time": time.time() - args.last_log,
-#             },
-#             step=args.current_train_step,
-#             args=args,
-#             prefix=f"{prefix}/",
-#         )
-#     else:
-#         raise NotImplementedError
-
-def maybe_save_checkpoint(accelerator: Accelerator, config: TrainConfig):
-    if (
-        config.current_state.train_step > config.optim_config.total_steps
-        or config.current_state.train_step % config.checkpoint.every_steps == 0
+    @staticmethod
+    def set_additional_metrics(
+        test_task: TestTask,
+        predictions: List[torch.Tensor],
+        references: List[torch.Tensor],
+        is_valid: List[bool],
     ):
-        output_dir = f'checkpoint-{config.current_state.train_step}'
-        accelerator.save_state(output_dir=output_dir)
+        additional_metrics = {}
+        #TODO(hyeontae): Remove hard-coded logic
+        if test_task == TestTask.TEXT2MOL.value:
+            additional_metrics.update(
+                get_text2mol_metrics(
+                    predictions=predictions,
+                    references=references,
+                    is_valid=is_valid,
+                ))
+        elif test_task == TestTask.MOL2TEXT.value:
+            pass
+        elif test_task == TestTask.TEXT2FRAG.value:
+            pass
+        elif test_task in [
+                TestTask.DTI.value, TestTask.PEER.value, TestTask.MOLNET.value
+        ]:
+            pass
+        else:
+            raise ValueError(f"Invalid test task: {test_task}")
 
-def maybe_eval_predict(
-    mode: str,
-    model: Model,
-    dataloader: DataLoader,
-    config: TrainConfig,
-    tokenizer: SpecialTokensMixin,
-    accelerator: Accelerator,
-    prefix='test'
-):
-
-    if (
-        config.current_state.train_step > config.optim_config.total_steps
-        or config.current_state.train_step % config.predict_config.every_steps == 0
-    ):
-        model.eval()
-
-        with torch.no_grad():
-            if mode == 'ft':
-                predict(
-                    model, dataloader, config, tokenizer, accelerator, prefix=prefix
-                )
-
-        config.current_state.last_log = time.time()
-        model.train()
+        return additional_metrics

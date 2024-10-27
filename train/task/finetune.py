@@ -2,14 +2,14 @@ import logging
 from typing import Tuple
 
 import datasets
-from omegaconf import DictConfig, OmegaConf, SCMode
 from torch.utils.data import DataLoader
 from transformers import SpecialTokensMixin
 
 from core.task import BaseTaskCls
 from model.config import ModelConfig
+from model.loader import ModelLoader
 from train.config import DataConfig, TrainConfig
-from train.train import Trainer, load_model, load_tokenizer, validate_config
+from train.train import Trainer, validate_config
 from train.utils import DataCollatorForNI
 from utils import to_absolute_path
 
@@ -32,19 +32,23 @@ class App(BaseTaskCls):
 
     def run(self, **kwargs):
         validate_config(self.train_config)
-        model = load_model(self.model_config)
-        tokenizer = load_tokenizer(self.model_config)
 
-        self.trainer = Trainer(self.train_config)
+        self.model_loader = ModelLoader(self.model_config)
+        model = self.model_loader.load_model()
+        representation = self.model_loader.load_representation()
+        tokenizer = self.model_loader.load_tokenizer()
+
+        self.trainer = Trainer(self.train_config, self.data_config)
         train_dataloader, test_dataloader, eval_dataloader = self.get_dataloader(
             tokenizer)
 
         self.trainer.train(
             model=model,
             tokenizer=tokenizer,
-            train_data=train_dataloader,
-            test_data=test_dataloader,
-            eval_data=eval_dataloader,
+            representation=representation,
+            train_dataloader=train_dataloader,
+            test_dataloader=test_dataloader,
+            eval_dataloader=eval_dataloader,
         )
 
     def get_dataloader(

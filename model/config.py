@@ -4,7 +4,7 @@ from enum import Enum
 from typing import List, Optional
 
 
-class Representation(Enum):
+class RepresentationType(Enum):
     SMILES = "smiles"
     SELFIES = "selfies"
     FRAG = "frag"
@@ -16,7 +16,7 @@ class TokenizerConfig:
 
 
 @dataclasses.dataclass
-class MolTokenizerConfig:
+class RepresentationConfig:
     # one of the following should be set
     smiles: Optional[bool] = None
     selfies: Optional[bool] = None
@@ -33,6 +33,6 @@ class ModelConfig:
     name: str
     load_model: LoadModel
     tokenizer_config: TokenizerConfig
-    representation: Representation
+    representation_type: RepresentationType
     checkpoint_path: Optional[str] = None
     dropout: Optional[float] = field(default=0.1)
