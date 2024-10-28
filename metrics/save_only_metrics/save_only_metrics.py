@@ -1,11 +1,10 @@
 import datasets
-from datasets.config import importlib_metadata, version
 import evaluate
-from rdkit import Chem
 import numpy as np
-from nltk.translate.bleu_score import corpus_bleu
+from datasets.config import importlib_metadata, version
 from Levenshtein import distance as lev
-from rdkit import RDLogger
+from nltk.translate.bleu_score import corpus_bleu
+from rdkit import Chem, RDLogger
 
 NLTK_VERSION = version.parse(importlib_metadata.version("nltk"))
 
@@ -23,31 +22,32 @@ No args.
 """
 
 
-@evaluate.utils.file_utils.add_start_docstrings(_DESCRIPTION, _KWARGS_DESCRIPTION)
+@evaluate.utils.file_utils.add_start_docstrings(_DESCRIPTION,
+                                                _KWARGS_DESCRIPTION)
 class Text2Mol_translation(evaluate.Metric):
+
     def _info(self):
         return evaluate.MetricInfo(
             description=_DESCRIPTION,
             citation=_CITATION,
             inputs_description=_KWARGS_DESCRIPTION,
             features=[
-                datasets.Features(
-                    {
-                        "predictions": datasets.Value("string", id="sequence"),
-                        "references": datasets.Sequence(datasets.Value("string", id="sequence"), id="references"),
-                    }
-                ),
-                datasets.Features(
-                    {
-                        "predictions": datasets.Value("string", id="sequence"),
-                        "references": datasets.Value("string", id="sequence"),
-                    }
-                ),
+                datasets.Features({
+                    "predictions":
+                    datasets.Value("string", id="sequence"),
+                    "references":
+                    datasets.Sequence(datasets.Value("string", id="sequence"),
+                                      id="references"),
+                }),
+                datasets.Features({
+                    "predictions":
+                    datasets.Value("string", id="sequence"),
+                    "references":
+                    datasets.Value("string", id="sequence"),
+                }),
             ],
             codebase_urls=["https://xxx.com"],
-            reference_urls=[
-                "https://xxx.com"
-            ],
+            reference_urls=["https://xxx.com"],
         )
 
     def _download_and_prepare(self, dl_manager):
@@ -59,7 +59,11 @@ class Text2Mol_translation(evaluate.Metric):
         if NLTK_VERSION >= version.Version("3.6.6"):
             nltk.download("omw-1.4")
 
-    def _compute(self, predictions, references, tsv_path="tmp.tsv", verbose=False):
+    def _compute(self,
+                 predictions,
+                 references,
+                 tsv_path="tmp.tsv",
+                 verbose=False):
         inputs = [references[i][1] for i in range(len(references))]
         references = [references[i][0] for i in range(len(references))]
         outputs = []
@@ -69,7 +73,7 @@ class Text2Mol_translation(evaluate.Metric):
             for it, gt, out in zip(inputs, references, predictions):
                 f.write(it + "\t" + gt + "\t" + out + "\n")
                 outputs.append((it, gt, out))
-        
+
         RDLogger.DisableLog('rdApp.*')
         bleu_scores = []
         #meteor_scores = []
@@ -82,7 +86,6 @@ class Text2Mol_translation(evaluate.Metric):
             if i % 100 == 0:
                 if verbose:
                     print(i, 'processed.')
-
 
             gt_tokens = [c for c in gt]
 
@@ -122,18 +125,16 @@ class Text2Mol_translation(evaluate.Metric):
                 m_out = Chem.MolFromSmiles(out)
                 m_gt = Chem.MolFromSmiles(gt)
 
-                if Chem.MolToInchi(m_out) == Chem.MolToInchi(m_gt): num_exact += 1
+                if Chem.MolToInchi(m_out) == Chem.MolToInchi(m_gt):
+                    num_exact += 1
                 #if gt == out: num_exact += 1 #old version that didn't standardize strings
             except:
                 bad_mols += 1
 
-            
-
             levs.append(lev(out, gt))
 
-
         # Exact matching score
-        exact_match_score = num_exact/(i+1)
+        exact_match_score = num_exact / (i + 1)
         if verbose:
             print('Exact Match:')
             print(exact_match_score)
@@ -143,8 +144,8 @@ class Text2Mol_translation(evaluate.Metric):
         if verbose:
             print('Levenshtein:')
             print(levenshtein_score)
-            
-        validity_score = 1 - bad_mols/len(outputs)
+
+        validity_score = 1 - bad_mols / len(outputs)
         if verbose:
             print('bad mols:', bad_mols)
             print('validity:', validity_score)

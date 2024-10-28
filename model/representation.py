@@ -52,7 +52,8 @@ class Smiles(Representation):
 
     def encode(self, mol: SMILES, verbose=False) -> str:
         try:
-            smiles = Chem.MolToSmiles(Chem.MolFromSmiles(mol), kekuleSmiles=True)
+            smiles = Chem.MolToSmiles(Chem.MolFromSmiles(mol),
+                                      kekuleSmiles=True)
         except:
             if verbose:
                 logger.warning(f"Failed to encode SMILES: {mol}")
@@ -63,7 +64,7 @@ class Smiles(Representation):
         valid = True
         try:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(text_mol),
-                                kekuleSmiles=True)
+                                      kekuleSmiles=True)
         except:
             valid = False
             if verbose:
@@ -128,15 +129,17 @@ class Frag(Representation):
             decoded_smiles = DUMMY_SMILES
         return decoded_smiles, valid
 
+
 def get_representation(representation_type) -> Representation:
-    
+
     representation_dict = {
         RepresentationType.SMILES.value: Smiles,
         RepresentationType.SELFIES.value: Selfies,
         RepresentationType.FRAG.value: Frag,
     }
-    
+
     return representation_dict[representation_type]()
+
 
 def find_order(smile):
     i = 0

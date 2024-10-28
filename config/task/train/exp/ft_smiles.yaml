@@ -33,7 +33,7 @@ train_config:
 
 model_config:
   name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_smiles_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"  
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_smiles_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"
   representation_type: smiles
   load_model:
     from_pretrained: true

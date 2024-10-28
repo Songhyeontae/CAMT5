@@ -1,10 +1,10 @@
-import datasets
-from datasets.config import importlib_metadata, version
-import evaluate
-
-import numpy as np
-from sklearn import metrics
 import random
+
+import datasets
+import evaluate
+import numpy as np
+from datasets.config import importlib_metadata, version
+from sklearn import metrics
 
 _CITATION = """\
 @article{xxx
@@ -20,25 +20,25 @@ No args.
 """
 
 
-@evaluate.utils.file_utils.add_start_docstrings(_DESCRIPTION, _KWARGS_DESCRIPTION)
+@evaluate.utils.file_utils.add_start_docstrings(_DESCRIPTION,
+                                                _KWARGS_DESCRIPTION)
 class DTI_classification(evaluate.Metric):
+
     def _info(self):
         return evaluate.MetricInfo(
             description=_DESCRIPTION,
             citation=_CITATION,
             inputs_description=_KWARGS_DESCRIPTION,
             features=[
-                datasets.Features(
-                    {
-                        "predictions": datasets.Value("float", id="sequence"),
-                        "references": datasets.Value("string", id="sequence"),
-                    }
-                ),
+                datasets.Features({
+                    "predictions":
+                    datasets.Value("float", id="sequence"),
+                    "references":
+                    datasets.Value("string", id="sequence"),
+                }),
             ],
             codebase_urls=["https://xxx.com"],
-            reference_urls=[
-                "https://xxx.com"
-            ],
+            reference_urls=["https://xxx.com"],
         )
 
     def _compute(self, predictions, references, tsv_path="tmp.tsv"):
