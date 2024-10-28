@@ -1,14 +1,11 @@
 import datasets
-from datasets.config import importlib_metadata, version
 import evaluate
-
 import numpy as np
-
-from transformers import BertTokenizerFast
-
+from datasets.config import importlib_metadata, version
 from nltk.translate.bleu_score import corpus_bleu
 from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
+from transformers import BertTokenizerFast
 
 NLTK_VERSION = version.parse(importlib_metadata.version("nltk"))
 
@@ -32,31 +29,34 @@ Args:
 """
 
 
-@evaluate.utils.file_utils.add_start_docstrings(_DESCRIPTION, _KWARGS_DESCRIPTION)
+@evaluate.utils.file_utils.add_start_docstrings(_DESCRIPTION,
+                                                _KWARGS_DESCRIPTION)
 class Mol2Text_translation(evaluate.Metric):
+
     def _info(self):
         return evaluate.MetricInfo(
             description=_DESCRIPTION,
             citation=_CITATION,
             inputs_description=_KWARGS_DESCRIPTION,
             features=[
-                datasets.Features(
-                    {
-                        "predictions": datasets.Value("string", id="sequence"),
-                        "references": datasets.Sequence(datasets.Value("string", id="sequence"), id="references"),
-                    }
-                ),
-                datasets.Features(
-                    {
-                        "predictions": datasets.Value("string", id="sequence"),
-                        "references": datasets.Value("string", id="sequence"),
-                    }
-                ),
+                datasets.Features({
+                    "predictions":
+                    datasets.Value("string", id="sequence"),
+                    "references":
+                    datasets.Sequence(datasets.Value("string", id="sequence"),
+                                      id="references"),
+                }),
+                datasets.Features({
+                    "predictions":
+                    datasets.Value("string", id="sequence"),
+                    "references":
+                    datasets.Value("string", id="sequence"),
+                }),
             ],
-            codebase_urls=["https://github.com/blender-nlp/MolT5/blob/main/evaluation/text_translation_metrics.py"],
-            reference_urls=[
-                "https://github.com/blender-nlp/MolT5"
+            codebase_urls=[
+                "https://github.com/blender-nlp/MolT5/blob/main/evaluation/text_translation_metrics.py"
             ],
+            reference_urls=["https://github.com/blender-nlp/MolT5"],
         )
 
     def _download_and_prepare(self, dl_manager):
@@ -68,7 +68,12 @@ class Mol2Text_translation(evaluate.Metric):
         if NLTK_VERSION >= version.Version("3.6.6"):
             nltk.download("omw-1.4")
 
-    def _compute(self, predictions, references, text_model='allenai/scibert_scivocab_uncased', text_trunc_length=512, tsv_path="tmp.tsv"):
+    def _compute(self,
+                 predictions,
+                 references,
+                 text_model='allenai/scibert_scivocab_uncased',
+                 text_trunc_length=512,
+                 tsv_path="tmp.tsv"):
         inputs = [references[i][1] for i in range(len(references))]
         references = [references[i][0] for i in range(len(references))]
         text_tokenizer = BertTokenizerFast.from_pretrained(text_model)
@@ -80,14 +85,18 @@ class Mol2Text_translation(evaluate.Metric):
 
         for gt, out in zip(references, predictions):
 
-            gt_tokens = text_tokenizer.tokenize(gt, truncation=True, max_length=text_trunc_length,
+            gt_tokens = text_tokenizer.tokenize(gt,
+                                                truncation=True,
+                                                max_length=text_trunc_length,
                                                 padding='max_length')
             gt_tokens = list(filter(('[PAD]').__ne__, gt_tokens))
             gt_tokens = list(filter(('[CLS]').__ne__, gt_tokens))
             gt_tokens = list(filter(('[SEP]').__ne__, gt_tokens))
 
-            out_tokens = text_tokenizer.tokenize(out, truncation=True, max_length=text_trunc_length,
-                                                padding='max_length')
+            out_tokens = text_tokenizer.tokenize(out,
+                                                 truncation=True,
+                                                 max_length=text_trunc_length,
+                                                 padding='max_length')
             out_tokens = list(filter(('[PAD]').__ne__, out_tokens))
             out_tokens = list(filter(('[CLS]').__ne__, out_tokens))
             out_tokens = list(filter(('[SEP]').__ne__, out_tokens))
@@ -98,8 +107,8 @@ class Mol2Text_translation(evaluate.Metric):
             mscore = meteor_score([gt_tokens], out_tokens)
             meteor_scores.append(mscore)
 
-        bleu2 = corpus_bleu(refs, preds, weights=(.5,.5))
-        bleu4 = corpus_bleu(refs, preds, weights=(.25,.25,.25,.25))
+        bleu2 = corpus_bleu(refs, preds, weights=(.5, .5))
+        bleu4 = corpus_bleu(refs, preds, weights=(.25, .25, .25, .25))
 
         _meteor_score = np.mean(meteor_scores)
 
