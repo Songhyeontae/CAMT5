@@ -146,7 +146,7 @@ class Trainer:
             decoded_references = decode(batch["labels"])
             decoded_predictions = decode(generation_result.predictions)
 
-            parsed_inputs, parsed_predictions, parsed_references, is_valid =\
+            parsed_inputs, parsed_predictions, parsed_references =\
                 TaskHelper.parse(
                     test_task,
                     representation,
@@ -183,7 +183,6 @@ class Trainer:
                 test_task,
                 prediction_total,
                 reference_total,
-                is_valid,
             ))
         self._log_stats(eval_metric, prefix=prefix)
         if eval_config.eval_results_path is not None:
@@ -416,8 +415,8 @@ class TaskHelper:
         # TODO(hyeontae): Remove hard-coded logic
         assert len(inputs) == len(predictions) == len(references)
 
-        parsed_inputs, parsed_predictions, parsed_references, is_valid \
-            = None, None, None, None
+        parsed_inputs, parsed_predictions, parsed_references \
+            = None, None, None
 
         # Mol2Text, Only parse inputs
         if test_task == TestTask.MOL2TEXT.value:
@@ -427,7 +426,6 @@ class TaskHelper:
             ]
             parsed_predictions = predictions
             parsed_references = references
-            is_valid = [True for _ in range(len(parsed_predictions))]
 
         # Text2Mol, Parse inputs, predictions, representations
         elif test_task == TestTask.TEXT2MOL.value:
@@ -437,10 +435,8 @@ class TaskHelper:
             ]
 
             parsed_predictions = []
-            is_valid = []
             for prediction in predictions:
-                parsed_prediction, valid = representation.decode(prediction)
-                is_valid.append(valid)
+                parsed_prediction = representation.decode(prediction)
                 parsed_predictions.append(parsed_prediction)
 
             # TODO(hyeontae): check references are SELFIES format
@@ -461,18 +457,16 @@ class TaskHelper:
             ]
             parsed_inputs = inputs
             parsed_references = references
-            is_valid = [True for _ in range(len(parsed_predictions))]
         else:
             raise ValueError(f"Invalid test task: {test_task}")
 
-        return parsed_inputs, parsed_predictions, parsed_references, is_valid
+        return parsed_inputs, parsed_predictions, parsed_references
 
     @staticmethod
     def set_additional_metrics(
         test_task: TestTask,
         predictions: List[torch.Tensor],
         references: List[torch.Tensor],
-        is_valid: List[bool],
     ):
         additional_metrics = {}
         #TODO(hyeontae): Remove hard-coded logic
@@ -481,7 +475,6 @@ class TaskHelper:
                 get_text2mol_metrics(
                     predictions=predictions,
                     references=references,
-                    is_valid=is_valid,
                 ))
         elif test_task == TestTask.MOL2TEXT.value:
             pass

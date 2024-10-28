@@ -6,12 +6,12 @@ from rdkit.Chem import AllChem, MACCSkeys
 from rdkit.Chem.Fingerprints import FingerprintMols
 
 RDLogger.DisableLog('rdApp.*')
+DUMMY_SMILES = "C"
 
 
 def get_text2mol_metrics(
     predictions: List[torch.Tensor],
     references: List[torch.Tensor],
-    is_valid: List[bool],
 ):
     #TODO(hyeontae): Remove hard-coded metrics
     s_rdk_list = []
@@ -21,13 +21,15 @@ def get_text2mol_metrics(
 
     invalid = 0
 
-    for prediction, reference, valid in zip(predictions, references, is_valid):
-        # gen_mol =  Chem.MolFromSmiles(prediction)
-        # target_mol = Chem.MolFromSmiles(reference)
-        # gen_smiles = Chem.MolToSmiles(gen_mol)
-        # target_smiles = Chem.MolToSmiles(target_mol)
+    for prediction, reference in zip(predictions, references):
+        gen_mol =  Chem.MolFromSmiles(prediction)
+        if gen_mol == None:
+            gen_mol = Chem.MolFromSmiles(DUMMY_SMILES)
+        target_mol = Chem.MolFromSmiles(reference)
+        gen_smiles = Chem.MolToSmiles(gen_mol)
+        target_smiles = Chem.MolToSmiles(target_mol)
 
-        if not valid:
+        if gen_smiles == DUMMY_SMILES:
             invalid += 1
             s_rdk_list.append(0)
             s_maccs_list.append(0)
@@ -35,20 +37,20 @@ def get_text2mol_metrics(
             exact_canon_list.append(0)
             continue
 
-        target_fp_rdk = FingerprintMols.GetRDKFingerprint(reference)
-        gen_fp_rdk = FingerprintMols.GetRDKFingerprint(prediction)
+        target_fp_rdk = FingerprintMols.GetRDKFingerprint(target_mol)
+        gen_fp_rdk = FingerprintMols.GetRDKFingerprint(gen_mol)
 
-        target_fp_maccs = MACCSkeys.GenMACCSKeys(reference)
-        gen_fp_maccs = MACCSkeys.GenMACCSKeys(prediction)
+        target_fp_maccs = MACCSkeys.GenMACCSKeys(target_mol)
+        gen_fp_maccs = MACCSkeys.GenMACCSKeys(gen_mol)
 
         fpgen = AllChem.GetMorganGenerator(radius=2)
-        target_fp_morgan = fpgen.GetSparseCountFingerprint(reference)
-        gen_fp_morgan = fpgen.GetSparseCountFingerprint(prediction)
+        target_fp_morgan = fpgen.GetSparseCountFingerprint(target_mol)
+        gen_fp_morgan = fpgen.GetSparseCountFingerprint(gen_mol)
 
         exact_match = (
             1 if \
-                Chem.MolToInchi(Chem.MolFromSmiles(prediction)) \
-                    == Chem.MolToInchi(Chem.MolFromSmiles(reference)) else 0
+                Chem.MolToInchi(Chem.MolFromSmiles(gen_smiles)) \
+                    == Chem.MolToInchi(Chem.MolFromSmiles(target_smiles)) else 0
         )
 
         s_rdk = DataStructs.TanimotoSimilarity(gen_fp_rdk, target_fp_rdk)
@@ -65,12 +67,12 @@ def get_text2mol_metrics(
     avg_maccs = sum(s_maccs_list) / (len(s_maccs_list))
     avg_morgan = sum(s_morgan_list) / (len(s_morgan_list))
     exact_canon = sum(exact_canon_list) / (len(exact_canon_list))
-    ivalid_ratio = invalid / len(is_valid)
+    invalid_ratio = invalid / len(predictions)
 
     return {
         "RDK": avg_rdk,
         "MACCS": avg_maccs,
         "Morgan": avg_morgan,
         "exact": exact_canon,
-        "invalid_ratio": ivalid_ratio
+        "invalid_ratio": invalid_ratio
     }

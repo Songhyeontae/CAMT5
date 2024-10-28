@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 RDLogger.DisableLog('rdApp.*')
 
 SMILES = NewType("SMILES", str)
-VALID = NewType("VALID", bool)
 
 DUMMY_SMILES = "C"
 ATOM_FINDER = re.compile(
@@ -44,7 +43,7 @@ class Representation(Protocol):
     def encode(self, mol: SMILES, verbose=False) -> str:
         ...
 
-    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
+    def decode(self, text_mol: str, verbose=False) -> SMILES:
         ...
 
 
@@ -60,17 +59,15 @@ class Smiles(Representation):
             smiles = DUMMY_SMILES
         return smiles
 
-    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
-        valid = True
+    def decode(self, text_mol: str, verbose=False) -> SMILES:
         try:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(text_mol),
                                       kekuleSmiles=True)
         except:
-            valid = False
             if verbose:
                 logger.warning(f"Failed to decode SMILES: {text_mol}")
             smiles = DUMMY_SMILES
-        return smiles, valid
+        return smiles
 
 
 class Selfies(Representation):
@@ -79,21 +76,18 @@ class Selfies(Representation):
         del verbose
         return mol
 
-    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
-        valid = True
+    def decode(self, text_mol: str, verbose=False) -> SMILES:
         try:
-            smiles = sf.decoder(text_mol)
-            mol = Chem.MolFromSmiles(smiles)
+            smiles =  Chem.MolToSmiles(Chem.MolFromSmiles(sf.decoder(text_mol)), kekuleSmiles=True)
         except:
-            valid = False
             if verbose:
                 logger.warning(f"Failed to decode SELFIES: {text_mol}")
             try:
-                mol = Chem.MolFromSmiles(self._filter_selfies(text_mol))
+                smiles = Chem.MolToSmiles(Chem.MolFromSmiles(self._filter_selfies(text_mol)), kekuleSmiles=True)
             except:
-                mol = DUMMY_SMILES
+                smiles = DUMMY_SMILES
 
-        return Chem.MolToSmiles(mol, kekuleSmiles=True), valid
+        return smiles
 
     def _filter_selfies(selfies: str) -> str:
         pattern = r"(\[[^\]]+\]\.?)"
@@ -115,19 +109,17 @@ class Frag(Representation):
             linear_smiles = "[C]"
         return linear_smiles
 
-    def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
-        valid = True
+    def decode(self, text_mol: str, verbose=False) -> SMILES:
         try:
             decoded_smiles = ""
             for smiles in text_mol.split("[.]"):
                 decoded_smiles += decode_linear(smiles) + "."
             decoded_smiles = decoded_smiles[:-1]
         except:
-            valid = False
             if verbose:
                 logger.warning(f"Failed to decode Frag: {text_mol}")
             decoded_smiles = DUMMY_SMILES
-        return decoded_smiles, valid
+        return decoded_smiles
 
 
 def get_representation(representation_type) -> Representation:

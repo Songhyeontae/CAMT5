@@ -21,7 +21,7 @@ train_config:
     task: "text2mol"
     every_steps: 2500
     total_steps: 100000
-    eval_results_path: ".eval_results/ft_text2mol_frag_micro_base_{now:%Y-%m-%d_%H-%M-%S}_stereo.txt"
+    eval_results_path: .eval_results/ft_text2mol_frag_micro_base_{now:%Y-%m-%d_%H-%M-%S}_stereo.txt
 
   checkpoint:
     every_steps: 10000
