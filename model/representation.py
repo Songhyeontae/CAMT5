@@ -79,9 +79,9 @@ class Selfies(Representation):
         return mol
 
     def decode(self, text_mol: str, verbose=False) -> Tuple[SMILES, VALID]:
-        smiles = sf.decoder(text_mol)
         valid = True
         try:
+            smiles = sf.decoder(text_mol)
             mol = Chem.MolFromSmiles(smiles)
         except:
             valid = False
