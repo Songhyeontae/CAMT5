@@ -45,6 +45,9 @@ class ModelLoader:
         tokenizer = AutoTokenizer.from_pretrained(self.model_config.name,
                                                   use_fast=True)
 
+        if tokenizer.pad_token is None:
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+
         tokenizer.model_max_length = int(1e9)
         AMINO_ACIDS = [
             "A",
@@ -102,7 +105,7 @@ class ModelLoader:
         # check whether checkpoint exists
         if self.model_config.checkpoint_path:
             checkpoint_path = self.model_config.checkpoint_path
-            model.load_state_dict(torch.load(checkpoint_path))
+            model.load_state_dict(torch.load(checkpoint_path), strict=True)
             torch.cuda.empty_cache()
 
             logger.info(f"Loaded model from checkpoint: {checkpoint_path}")

@@ -35,4 +35,4 @@ class ModelConfig:
     tokenizer_config: TokenizerConfig
     representation_type: RepresentationType
     checkpoint_path: Optional[str] = None
-    dropout: Optional[float] = field(default=0.1)
+    dropout: Optional[float] = field(default=0.0)

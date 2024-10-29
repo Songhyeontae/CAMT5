@@ -2,6 +2,7 @@ import logging
 from typing import Tuple
 
 import datasets
+from accelerate.utils import set_seed
 from torch.utils.data import DataLoader
 from transformers import SpecialTokensMixin
 
@@ -29,6 +30,7 @@ class App(BaseTaskCls):
         self.train_config = train_config
         self.model_config = model_config
         self.data_config = data_config
+        set_seed(self.train_config.seed)
 
     def run(self, **kwargs):
         validate_config(self.train_config)

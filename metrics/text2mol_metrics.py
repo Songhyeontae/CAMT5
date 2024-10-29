@@ -22,7 +22,7 @@ def get_text2mol_metrics(
     invalid = 0
 
     for prediction, reference in zip(predictions, references):
-        gen_mol =  Chem.MolFromSmiles(prediction)
+        gen_mol = Chem.MolFromSmiles(prediction)
         if gen_mol == None:
             gen_mol = Chem.MolFromSmiles(DUMMY_SMILES)
         target_mol = Chem.MolFromSmiles(reference)

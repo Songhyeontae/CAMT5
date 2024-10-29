@@ -34,7 +34,7 @@ class LRScheduler(Enum):
 class EvalConfig:
     task: TestTask
     every_steps: int
-    total_steps: int
+    total_steps: Optional[int] = None
     eval_results_path: Optional[str] = None
 
 
@@ -86,8 +86,6 @@ class TrainConfig:
     logging_config: LoggingConfig
 
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
-    # predict_config: Optional[PredictConfig] = field(
-    #     default_factory=PredictConfig)
     test_bsz_multi: Optional[int] = 1
     do_compile: Optional[bool] = False
 

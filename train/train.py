@@ -117,10 +117,14 @@ class Trainer:
         accelerator: Accelerator,
         prefix: str = "validation",
     ):
-        #TODO(hyeontae): Implement evaluation
+        # Set Model to eval mode
+        model.eval()
+
         eval_config = self.config.eval_config
         test_task = eval_config.task
-        total_steps = eval_config.total_steps
+        total_steps = len(dataloader)
+        if eval_config.total_steps:
+            total_steps = min(eval_config.total_steps, total_steps)
 
         metric = TaskHelper.set_task_metrics(test_task)
 
@@ -187,6 +191,9 @@ class Trainer:
         self._log_stats(eval_metric, prefix=prefix)
         if eval_config.eval_results_path is not None:
             self._write_eval_results(prefix, eval_metric)
+
+        # Set Model to train mode
+        model.train()
 
     def _train(
         self,
