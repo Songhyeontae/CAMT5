@@ -119,7 +119,7 @@ class Trainer:
     ):
         # Set Model to eval mode
         model.eval()
-        
+
         eval_config = self.config.eval_config
         test_task = eval_config.task
         total_steps = len(dataloader)
@@ -191,7 +191,7 @@ class Trainer:
         self._log_stats(eval_metric, prefix=prefix)
         if eval_config.eval_results_path is not None:
             self._write_eval_results(prefix, eval_metric)
-            
+
         # Set Model to train mode
         model.train()
 

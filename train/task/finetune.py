@@ -2,6 +2,7 @@ import logging
 from typing import Tuple
 
 import datasets
+from accelerate.utils import set_seed
 from torch.utils.data import DataLoader
 from transformers import SpecialTokensMixin
 
@@ -12,7 +13,6 @@ from train.config import DataConfig, TrainConfig
 from train.train import Trainer, validate_config
 from train.utils import DataCollatorForNI
 from utils import to_absolute_path
-from accelerate.utils import set_seed
 
 logger = logging.getLogger(__name__)
 

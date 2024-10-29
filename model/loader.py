@@ -47,7 +47,7 @@ class ModelLoader:
 
         if tokenizer.pad_token is None:
             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-            
+
         tokenizer.model_max_length = int(1e9)
         AMINO_ACIDS = [
             "A",
