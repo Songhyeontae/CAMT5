@@ -2,28 +2,28 @@
 
 train_config:
   device: "gpu"
+  seed: 42
+  shot: 1
   do_compile: False
   batch_size: 48
   grad_acc: 12
   optim_config:
     name: adamw
     weight_decay: 0.0
-    base_lr: 1e-3
+    base_lr: 5e-4
     total_steps: 50000
     grad_clip: 30.0
     lr_scheduler_config:
-      name: cosine
-      warmup_steps: 1000
+      name: constant
 
   eval_config:
     task: "text2mol"
-    every_steps: 2500
-    total_steps: 100000
-    eval_results_path: .eval_results/ft_text2mol_smiles_base_{now:%Y-%m-%d_%H-%M-%S}_stereo.txt
+    every_steps: 5000
+    eval_results_path: .eval_results/ft_text2mol_smiles_base_${now:%Y-%m-%d_%H-%M-%S}_stereo.txt
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_smiles_base_${now:%m%d}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_smiles_base_${now:%m%d}_stereo
 
   logging_config:
     every_steps: 100
@@ -36,7 +36,7 @@ model_config:
   checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_smiles_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"
   representation_type: smiles
   load_model:
-    from_pretrained: true
+    from_pretrained: false
   tokenizer_config:
     additional_tokens_paths:
       - "asset/mol_vocabs/frag.txt"
