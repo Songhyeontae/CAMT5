@@ -33,7 +33,6 @@ train_config:
     _target_: train.config.EvalConfig
     task: "text2mol"
     every_steps: 1000
-    total_steps: 10000
 
   checkpoint:
     _target_: train.config.Checkpoint
@@ -52,7 +51,7 @@ model_config:
   representation_type: smiles
   load_model:
     _target_: model.config.LoadModel
-    from_pretrained: true
+    from_pretrained: false
   tokenizer_config:
     _target_: model.config.TokenizerConfig
     additional_tokens_paths:

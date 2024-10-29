@@ -12,6 +12,7 @@ from train.config import DataConfig, TrainConfig
 from train.train import Trainer, validate_config
 from train.utils import DataCollatorForNI
 from utils import to_absolute_path
+from accelerate.utils import set_seed
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class App(BaseTaskCls):
         self.train_config = train_config
         self.model_config = model_config
         self.data_config = data_config
+        set_seed(self.train_config.seed)
 
     def run(self, **kwargs):
         validate_config(self.train_config)

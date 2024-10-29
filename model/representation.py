@@ -78,12 +78,15 @@ class Selfies(Representation):
 
     def decode(self, text_mol: str, verbose=False) -> SMILES:
         try:
-            smiles =  Chem.MolToSmiles(Chem.MolFromSmiles(sf.decoder(text_mol)), kekuleSmiles=True)
+            smiles = Chem.MolToSmiles(Chem.MolFromSmiles(sf.decoder(text_mol)),
+                                      kekuleSmiles=True)
         except:
             if verbose:
                 logger.warning(f"Failed to decode SELFIES: {text_mol}")
             try:
-                smiles = Chem.MolToSmiles(Chem.MolFromSmiles(self._filter_selfies(text_mol)), kekuleSmiles=True)
+                smiles = Chem.MolToSmiles(Chem.MolFromSmiles(
+                    self._filter_selfies(text_mol)),
+                                          kekuleSmiles=True)
             except:
                 smiles = DUMMY_SMILES
 
