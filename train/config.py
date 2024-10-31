@@ -36,6 +36,7 @@ class EvalConfig:
     every_steps: int
     total_steps: Optional[int] = None
     eval_results_path: Optional[str] = None
+    tensorboard_path: Optional[str] = None
 
 
 @dataclasses.dataclass

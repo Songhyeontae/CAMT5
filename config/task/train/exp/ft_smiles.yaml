@@ -19,7 +19,8 @@ train_config:
   eval_config:
     task: "text2mol"
     every_steps: 5000
-    eval_results_path: .eval_results/ft_text2mol_smiles_base_${now:%Y-%m-%d_%H-%M-%S}_stereo.txt
+    eval_results_path: .eval_results/ft_text2mol_smiles_base_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
+    tensorboard_path: .eval_results/ft_text2mol_smiles_base_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
 
   checkpoint:
     every_steps: 10000
