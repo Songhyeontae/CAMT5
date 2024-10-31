@@ -10,6 +10,7 @@ import torch
 from accelerate import Accelerator
 from datasets.iterable_dataset import IterableDataset
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 from transformers.modeling_outputs import (CausalLMOutputWithPast,
@@ -51,6 +52,11 @@ class Trainer:
         self.data_config = data_config
         # Averager for logging
         self.average_logger = Averager()
+        self.tensorboard_writer = SummaryWriter(
+            log_dir=to_absolute_path(config.eval_config.tensorboard_path))
+
+    def __del__(self):
+        self.tensorboard_writer.close()
 
     def train(
         self,
@@ -189,6 +195,11 @@ class Trainer:
                 prediction_total,
                 reference_total,
             ))
+
+        for k, v in eval_metric.items():
+            self.tensorboard_writer.add_scalar(f"{prefix}/{k}", v,
+                                               self.current_state.train_step)
+
         self._log_stats(eval_metric, prefix=prefix)
         if eval_config.eval_results_path is not None:
             self._write_eval_results(prefix, eval_metric)
@@ -304,6 +315,11 @@ class Trainer:
 
         self.average_logger.update({"time_per_step": seconds_per_step})
         averaged_metrics = self.average_logger.average()
+
+        # Write to tensorboard
+        for k, v in averaged_metrics.items():
+            self.tensorboard_writer.add_scalar(f"train/{k}", v,
+                                               self.current_state.train_step)
 
         self._log_stats(averaged_metrics, prefix='train')
         self.current_state.last_log = time.time()
