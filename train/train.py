@@ -172,7 +172,8 @@ class Trainer:
             # Update metrics
             metric.add_batch(
                 predictions=parsed_predictions,
-                references=parsed_references,
+                references=[(parsed_references[i], parsed_inputs[i])
+                            for i in range(len(parsed_references))],
             )
 
             input_total.extend(parsed_inputs)
