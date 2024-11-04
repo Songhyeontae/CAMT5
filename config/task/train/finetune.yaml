@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - train/exp: ft
+  - train/exp: ft_smiles
 
 _target_: train.task.finetune.App
 name: "train"
