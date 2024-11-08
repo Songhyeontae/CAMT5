@@ -10,8 +10,8 @@ DUMMY_SMILES = "C"
 
 
 def get_text2mol_metrics(
-    predictions: List[torch.Tensor],
-    references: List[torch.Tensor],
+    predictions: List[str],
+    references: List[str],
 ):
     #TODO(hyeontae): Remove hard-coded metrics
     s_rdk_list = []

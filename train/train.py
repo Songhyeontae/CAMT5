@@ -134,13 +134,13 @@ class Trainer:
 
         metric = TaskHelper.set_task_metrics(test_task)
 
-        def decode(preds: torch.Tensor) -> List[torch.Tensor]:
+        def decode(preds: torch.Tensor) -> List[str]:
             #TODO(hyeontae): Check the logic
             preds[preds == -100] = tokenizer.pad_token_id
-            preds = tokenizer.batch_decode(preds,
+            decoded_preds = tokenizer.batch_decode(preds,
                                            skip_special_tokens=True,
                                            clean_up_tokenization_spaces=True)
-            preds = [pred.strip() for pred in preds]
+            preds = [pred.strip() for pred in decoded_preds]
             return preds
 
         input_total, reference_total, prediction_total = [], [], []
@@ -430,11 +430,11 @@ class TaskHelper:
     def parse(
         test_task: TestTask,
         representation: Representation,
-        inputs: List[torch.Tensor],
-        predictions: List[torch.Tensor],
-        references: List[torch.Tensor],
-        scores: Optional[torch.Tensor] = None,
-    ) -> Tuple[List[str], List[str], List[str], int]:
+        inputs: List[str],
+        predictions: List[str],
+        references: List[str],
+        scores: Optional[str] = None,
+    ) -> Tuple[List[str], List[str], List[str]]:
 
         # TODO(hyeontae): Remove hard-coded logic
         assert len(inputs) == len(predictions) == len(references)
@@ -489,8 +489,8 @@ class TaskHelper:
     @staticmethod
     def set_additional_metrics(
         test_task: TestTask,
-        predictions: List[torch.Tensor],
-        references: List[torch.Tensor],
+        predictions: List[str],
+        references: List[str],
     ):
         additional_metrics = {}
         #TODO(hyeontae): Remove hard-coded logic
