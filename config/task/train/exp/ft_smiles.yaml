@@ -54,5 +54,5 @@ data_config:
   add_explanation: False
   tk_instruct: False
   exec_file_path: .data/ni_dataset.py
-  data_dir: .data/splits/mol_text/text2mol_smiles_stereo
+  data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_smiles_stereo
   task_dir: .data/tasks

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main(config: DictConfig):
-    app = instantiate(config.task)
+    app = instantiate(config.task, _convert_="all")
     try:
         output = app.run()
         if output is not None and len(output) > 0:
