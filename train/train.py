@@ -137,9 +137,10 @@ class Trainer:
         def decode(preds: torch.Tensor) -> List[str]:
             #TODO(hyeontae): Check the logic
             preds[preds == -100] = tokenizer.pad_token_id
-            decoded_preds = tokenizer.batch_decode(preds,
-                                           skip_special_tokens=True,
-                                           clean_up_tokenization_spaces=True)
+            decoded_preds = tokenizer.batch_decode(
+                preds,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=True)
             preds = [pred.strip() for pred in decoded_preds]
             return preds
 

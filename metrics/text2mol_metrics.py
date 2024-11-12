@@ -74,5 +74,7 @@ def get_text2mol_metrics(
         "MACCS": avg_maccs,
         "Morgan": avg_morgan,
         "exact": exact_canon,
+        "example_cnt": len(exact_canon_list),
+        "correct_cnt": sum(exact_canon_list),
         "invalid_ratio": invalid_ratio
     }

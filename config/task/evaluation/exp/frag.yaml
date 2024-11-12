@@ -1,0 +1,16 @@
+# @package task
+
+
+model_configs:
+  - _target_: model.config.ModelConfig
+    name: "google/t5-v1_1-base"
+    checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_frag_micro_model_base_pt_100000_1001_check/checkpoint-ft-50000/pytorch_model.bin"
+    representation_type: frag
+    load_model:
+      _target_: model.config.LoadModel
+      from_pretrained: false
+    tokenizer_config:
+      _target_: model.config.TokenizerConfig
+      additional_tokens_paths:
+        - "asset/mol_vocabs/frag_stereo.txt"
+        - "asset/mol_vocabs/selfies.txt"

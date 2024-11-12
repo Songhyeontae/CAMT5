@@ -46,6 +46,9 @@ class Representation(Protocol):
     def decode(self, text_mol: str, verbose=False) -> SMILES:
         ...
 
+    def get_size(self, text_mol: str) -> int:
+        ...
+
 
 class Smiles(Representation):
 
@@ -69,6 +72,12 @@ class Smiles(Representation):
             smiles = DUMMY_SMILES
         return smiles
 
+    def get_size(self, text_mol: str) -> int:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        atom_cnts = mol.GetNumAtoms()
+        return atom_cnts
+
 
 class Selfies(Representation):
 
@@ -91,6 +100,12 @@ class Selfies(Representation):
                 smiles = DUMMY_SMILES
 
         return smiles
+
+    def get_size(self, text_mol: str) -> int:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        atom_cnts = mol.GetNumAtoms()
+        return atom_cnts
 
     def _filter_selfies(selfies: str) -> str:
         pattern = r"(\[[^\]]+\]\.?)"
@@ -123,6 +138,12 @@ class Frag(Representation):
                 logger.warning(f"Failed to decode Frag: {text_mol}")
             decoded_smiles = DUMMY_SMILES
         return decoded_smiles
+
+    def get_size(self, text_mol: str) -> int:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        atom_cnts = mol.GetNumAtoms()
+        return atom_cnts
 
 
 def get_representation(representation_type) -> Representation:

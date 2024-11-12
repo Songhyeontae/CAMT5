@@ -1,0 +1,65 @@
+defaults:
+  - _self_
+  - evaluation/exp: smiles
+
+_target_: evaluation.task.run.App
+name: "evaluation"
+task_id: ${now:%Y-%m-%d_%H-%M-%S}
+
+eval_config:
+  _target_: evaluation.config.EvalConfig
+  data_config:
+    _target_: evaluation.config.DataConfig
+    batch_size: 4
+    data_path: ${oc.env:DATA_PATH}/molt5_splits/test_biot5.csv
+
+  predict_config:
+    _target_: evaluation.config.PredictConfig
+    max_length: 512
+    num_beams: 10
+    num_return_sequences: 1
+    confidence_config:
+      _target_: evaluation.config.ConfidenceConfig
+      confidence: neg_perplexity
+
+  device: gpu
+  ensemble: false
+
+
+model_configs:
+  - _target_: model.config.ModelConfig
+    name: "google/t5-v1_1-base"
+    checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_smiles_model_base_pt_100000_1001_check/checkpoint-ft-50000/pytorch_model.bin"
+    representation_type: smiles
+    load_model:
+      _target_: model.config.LoadModel
+      from_pretrained: false
+    tokenizer_config:
+      _target_: model.config.TokenizerConfig
+      additional_tokens_paths:
+        - "asset/mol_vocabs/frag.txt"
+        - "asset/mol_vocabs/selfies.txt"
+  # - _target_: model.config.ModelConfig
+  #   name: "google/t5-v1_1-base"
+  #   checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_selfies_model_base_pt_100000_1001_check/checkpoint-ft-50000/pytorch_model.bin"
+  #   representation_type: selfies
+  #   load_model:
+  #     _target_: model.config.LoadModel
+  #     from_pretrained: false
+  #   tokenizer_config:
+  #     _target_: model.config.TokenizerConfig
+  #     additional_tokens_paths:
+  #       - "asset/mol_vocabs/frag.txt"
+  #       - "asset/mol_vocabs/selfies.txt"
+  # - _target_: model.config.ModelConfig
+  #   name: "google/t5-v1_1-base"
+  #   checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_frag_micro_model_base_pt_100000_1001_check/checkpoint-ft-50000/pytorch_model.bin"
+  #   representation_type: frag
+  #   load_model:
+  #     _target_: model.config.LoadModel
+  #     from_pretrained: false
+  #   tokenizer_config:
+  #     _target_: model.config.TokenizerConfig
+  #     additional_tokens_paths:
+  #       - "asset/mol_vocabs/frag_stereo.txt"
+  #       - "asset/mol_vocabs/selfies.txt"
