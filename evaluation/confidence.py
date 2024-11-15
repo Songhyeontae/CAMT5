@@ -27,6 +27,8 @@ def get_perplexity(
     attention_mask: torch.Tensor,
     outputs: GenerateOutput,
     length_normalize: float = 1.0,
+    representation: Representation = None,
+    temperature: float = None,
 ) -> torch.Tensor:
     assert input_ids.shape == attention_mask.shape
     
@@ -63,13 +65,26 @@ def get_perplexity(
             ignore_index=IGNORE_INDEX, 
             reduction="none"
         ).view(batch_size, -1)
-        
-        loss_per_sample = loss_per_token.sum(dim=1) / encoded_labels["attention_mask"].sum(dim=1)
-        perplexity = torch.exp(loss_per_sample)
-        
         sequence_lengths = label_attention_mask.sum(dim=1)
         length_penalty = (sequence_lengths / (sequence_lengths ** length_normalize))
-        perplexity = perplexity ** length_penalty
+        
+        if temperature is not None:
+            importance = _get_importance(
+                seq_len=loss_per_token.shape[1],
+                sequences=best_sequence,
+                temperature=temperature,
+                device=device,
+                tokenizer=tokenizer,
+                representation=representation,
+            )
+        else:
+            importance = torch.ones_like(loss_per_token)
+        
+        weight = 0.5 * length_penalty.view(-1, 1) + 0.5 * importance
+        importance_weighted_loss_per_token = loss_per_token * weight
+        loss_per_sample = importance_weighted_loss_per_token.sum(dim=1) / encoded_labels["attention_mask"].sum(dim=1)
+        perplexity = torch.exp(loss_per_sample)
+        
     return perplexity
 
 def get_entropy(
@@ -83,7 +98,8 @@ def get_entropy(
 
     sentence_log_probs = transition_scores.sum(dim=1).reshape(batch_size, -1) # (batch_size, num_sequences)
     
-    entropy = -1 * sentence_log_probs.mean(dim=1)
+    importance_sampling_weight = torch.nn.functional.softmax(sentence_log_probs/0.01, dim=1)
+    entropy = -1 * (sentence_log_probs * importance_sampling_weight).mean(dim=1)
     return entropy
 
 def get_len_norm_entropy(
@@ -98,8 +114,8 @@ def get_len_norm_entropy(
     pad_token_id = model.config.pad_token_id
     sequence_lengths = (outputs.sequences != pad_token_id).sum(dim=1).reshape(batch_size, -1) # (batch_size, num_sequences)
     sentence_log_probs = transition_scores.sum(dim=1).reshape(batch_size, -1) # (batch_size, num_sequences)
-    
-    entropy = -1 * (sentence_log_probs / sequence_lengths).mean(dim=1)
+    importance_sampling_weight = torch.nn.functional.softmax(sentence_log_probs/0.01, dim=1)
+    entropy = -1 * (sentence_log_probs * importance_sampling_weight / sequence_lengths).mean(dim=1)
     
     return entropy
 
@@ -111,35 +127,25 @@ def get_importance_weighted_entropy(
     batch_size: int,
     outputs: GenerateOutput,
     temperature: float = 0.01,
-):
+) -> torch.Tensor:
     sequences = outputs.sequences
-    max_len = sequences.shape[1]
-    
-    seq_token_sizes = []
-    for sequence in sequences:
-        token_sizes = []
-        for token in sequence:
-            token_mol = tokenizer.decode([token], skip_special_tokens=True)
-            size = representation.get_size(token_mol)
-            logger.info(f"token: {token_mol}, size: {size}")
-            token_sizes.append(size)
-        if len(token_sizes) < max_len:
-            token_sizes.extend([-1e9] * (max_len - len(token_sizes)))
-        seq_token_sizes.append(token_sizes)
-
-    seq_token_sizes = torch.tensor(seq_token_sizes).to(device)
-    
-    #importance
-    importance = torch.nn.functional.softmax(seq_token_sizes/temperature, dim=1) # (batch_size * num_sequences, max_len)
-    
     transition_scores = model.compute_transition_scores(
-        outputs.sequences, outputs.scores, outputs.beam_indices, normalize_logits=True,
+        sequences, outputs.scores, outputs.beam_indices, normalize_logits=True,
     ) # (batch_size * num_sequences, max_len)
     
+    importance = _get_importance(
+        seq_len=transition_scores.shape[1],
+        sequences=sequences,
+        temperature=temperature,
+        device=device,
+        tokenizer=tokenizer,
+        representation=representation,
+    )
+
     weighted_transition_scores = transition_scores * importance
-    
     sentence_log_probs = weighted_transition_scores.sum(dim=1).reshape(batch_size, -1) # (batch_size, num_sequences)
-    entropy = -1 * sentence_log_probs.mean(dim=1)
+    importance_sampling_weight = torch.nn.functional.softmax(sentence_log_probs/0.01, dim=1)
+    entropy = -1 * (sentence_log_probs * importance_sampling_weight).mean(dim=1)
     
     return entropy
 
@@ -208,3 +214,29 @@ def get_exact(
         exacts.append(exact_match)
         
     return torch.tensor(exacts)
+
+def _get_importance(
+    seq_len: int,
+    sequences: torch.Tensor,
+    temperature: float,
+    device: str,
+    tokenizer: PreTrainedTokenizer,
+    representation: Representation,
+) -> torch.Tensor:
+    seq_token_sizes = []
+    for sequence in sequences:
+        token_sizes = []
+        for token in sequence:
+            if token == tokenizer.pad_token_id:
+                continue
+            token_mol = tokenizer.decode([token], skip_special_tokens=True)
+            size = representation.get_size(token_mol)
+            token_sizes.append(size)
+        if len(token_sizes) < seq_len:
+            token_sizes.extend([-1e9] * (seq_len - len(token_sizes)))
+        seq_token_sizes.append(token_sizes)
+    seq_token_sizes = torch.tensor(seq_token_sizes).to(device)
+    
+    importance = torch.nn.functional.softmax(seq_token_sizes/temperature, dim=1)
+        
+    return importance

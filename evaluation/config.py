@@ -14,6 +14,7 @@ class Confidence(Enum):
     ENTROPY = "entropy"
     LEN_NORM_ENTROPY = "len_norm_entropy"
     IMPORTANCE_WEIGHTED_ENTROPY = "importance_weighted_entropy"
+    IMPORTANCE_WEIGHTED_PERPLEXITY = "importance_weighted_perplexity"
     ORACLE_RDK = "oracle_RDK"
     ORACLE_EXACT = "oracle_exact"
     

@@ -8,9 +8,9 @@ eval_config:
     _target_: evaluation.config.PredictConfig
     num_return_sequences: 10
     cache_paths:
-      smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-12/debug_17-14-20/smiles_predictions.txt"
-      selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-12/debug_17-14-51/selfies_predictions.txt"
-      frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-12/debug_17-15-24/frag_predictions.txt"
+      smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_15-35-27/smiles_predictions.txt"
+      selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_15-35-47/selfies_predictions.txt"
+      frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_15-03-41/frag_predictions.txt"
 
     confidence_config:
       confidence: entropy
