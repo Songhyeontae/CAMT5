@@ -6,7 +6,7 @@ eval_config:
       smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-11/debug_03-23-25/smiles_predictions.txt"
       selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-11/debug_05-10-39/selfies_predictions.txt"
       frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-11/debug_05-46-31/frag_predictions.txt"
-  
+
     confidence_config:
       confidence: oracle
 
