@@ -82,8 +82,14 @@ class Smiles(Representation):
 class Selfies(Representation):
 
     def encode(self, mol: SMILES, verbose=False) -> str:
-        del verbose
-        return mol
+        try:
+            selfies = sf.encoder(Chem.MolToSmiles(Chem.MolFromSmiles(mol),
+                                                  kekuleSmiles=True))
+        except:
+            if verbose:
+                logger.warning(f"Failed to encode SELFIES: {mol}")
+            selfies = sf.encoder(DUMMY_SMILES)
+        return selfies
 
     def decode(self, text_mol: str, verbose=False) -> SMILES:
         try:
