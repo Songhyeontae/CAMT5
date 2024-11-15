@@ -6,7 +6,7 @@ eval_config:
       smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-11/debug_18-01-56/smiles_predictions.txt"
       selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-11/debug_18-02-36/selfies_predictions.txt"
       frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-11/debug_18-03-04/frag_predictions.txt"
-  
+
     confidence_config:
       confidence: neg_normalized_perplexity
       length_normalize: -1.0
