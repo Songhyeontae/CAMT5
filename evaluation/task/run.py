@@ -160,8 +160,8 @@ def predict(
         best_sequences = sequences[:, 0, :]  # Sequences are sorted by score
         decoded_sequences = mol_lm.tokenizer.batch_decode(
             best_sequences, skip_special_tokens=True)
+        decoded_sequences = [seq.replace(" ", "") for seq in decoded_sequences]
 
-        #TODO: calculate confidence
         confidences = get_confidence(
             mol_lm=mol_lm,
             device=device,
