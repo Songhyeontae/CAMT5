@@ -177,6 +177,7 @@ def predict(
             outputs=outputs, 
             confidence=config.confidence_config.confidence,
             length_normalize=config.confidence_config.length_normalize,
+            temperature=config.confidence_config.temperature,
             # for oracle confidence
             prediction=decoded_sequences,
             target=target,
@@ -184,6 +185,7 @@ def predict(
         
     return decoded_sequences, confidences
 
+# TODO(hyeontae): Refactor this function
 def get_confidence(
     mol_lm: MolLM,
     device: str,
@@ -219,6 +221,19 @@ def get_confidence(
             length_normalize=length_normalize,
         )
         return [-perp for perp in perplexity.tolist()]
+    elif confidence == Confidence.IMPORTANCE_WEIGHTED_PERPLEXITY.value:
+        perplexity = get_perplexity(
+            model=mol_lm.model,
+            tokenizer=mol_lm.tokenizer,
+            device=device,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            outputs=outputs,
+            representation=mol_lm.representation,
+            temperature=temperature,
+            length_normalize=length_normalize,
+        )
+        return [-perp for perp in perplexity.tolist()]
     elif confidence == Confidence.PROBABILITY.value:
         pass
     elif confidence == Confidence.ENTROPY.value:
@@ -246,7 +261,7 @@ def get_confidence(
             outputs=outputs,
             temperature=temperature,
         )
-        return [-ent for ent in entropy]
+        return [-ent for ent in entropy.tolist()]
     
     elif confidence == Confidence.ORACLE_RDK.value:
         assert target is not None, "Target should be provided for oracle confidence"

@@ -142,6 +142,8 @@ class Frag(Representation):
     def get_size(self, text_mol: str) -> int:
         smiles = self.decode(text_mol)
         mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return 0
         atom_cnts = mol.GetNumAtoms()
         return atom_cnts
 
