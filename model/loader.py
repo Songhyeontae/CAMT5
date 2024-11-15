@@ -2,7 +2,7 @@ import logging
 from typing import Union
 
 import torch
-from transformers import (AutoConfig, AutoTokenizer, OPTForCausalLM,
+from transformers import (AutoConfig, T5Tokenizer, OPTForCausalLM,
                           PretrainedConfig, PreTrainedTokenizer,
                           T5ForConditionalGeneration)
 
@@ -42,9 +42,9 @@ class ModelLoader:
 
     def load_tokenizer(self) -> PreTrainedTokenizer:
         tokenizer_config = self.model_config.tokenizer_config
-        tokenizer = AutoTokenizer.from_pretrained(self.model_config.name,
+        tokenizer = T5Tokenizer.from_pretrained(self.model_config.name,
                                                   use_fast=True)
-
+        
         if tokenizer.pad_token is None:
             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
