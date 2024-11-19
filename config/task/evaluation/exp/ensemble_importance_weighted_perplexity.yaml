@@ -4,13 +4,13 @@ eval_config:
   predict_config:
     _target_: evaluation.config.PredictConfig
     cache_paths:
-      smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_17-26-52/smiles_predictions.txt"
-      selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_17-27-37/selfies_predictions.txt"
-      frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_17-06-53/frag_predictions.txt"
+      smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-16/debug_13-37-09/smiles_predictions.txt"
+      selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-16/debug_12-54-27/selfies_predictions.txt"
+      frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-19/debug_12-12-38/frag_predictions.txt"
 
     confidence_config:
       confidence: importance_weighted_perplexity
-      temperature: 10
+      temperature: 2.0
       length_normalize: -1.0
 
   device: gpu
@@ -43,7 +43,7 @@ model_configs:
         - "asset/mol_vocabs/selfies.txt"
   - _target_: model.config.ModelConfig
     name: "google/t5-v1_1-base"
-    checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/ft_text2mol_frag_micro_model_base_pt_100000_1001_check/checkpoint-ft-50000/pytorch_model.bin"
+    checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_imp_weighted_T_2_1117_stereo/checkpoint-50000/pytorch_model.bin"
     representation_type: frag
     load_model:
       _target_: model.config.LoadModel
