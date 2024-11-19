@@ -8,13 +8,13 @@ eval_config:
     _target_: evaluation.config.PredictConfig
     num_return_sequences: 10
     cache_paths:
-      smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_19-04-27/smiles_predictions.txt"
-      selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_19-01-41/selfies_predictions.txt"
-      frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-13/debug_19-02-00/frag_predictions.txt"
+      smiles: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-16/debug_14-48-18/smiles_predictions.txt"
+      selfies: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-16/debug_13-45-37/selfies_predictions.txt"
+      frag: "/home/osikjs/hyeontae/CAMT5/logs/2024-11-16/debug_12-53-40/frag_predictions.txt"
 
     confidence_config:
       confidence: importance_weighted_entropy
-      temperature: 0.1
+      temperature: 2.0
 
   device: gpu
   ensemble: true
