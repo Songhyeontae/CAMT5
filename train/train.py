@@ -20,9 +20,9 @@ from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
 from model.representation import Representation, Selfies, get_importance
 from train.config import DataConfig, Device, TestTask, TrainConfig
+from train.loss import get_loss
 from train.optimizer import get_optimizer
 from train.scheduler import get_lr_scheduler
-from train.loss import get_loss
 from train.utils import Averager
 from utils import to_absolute_path
 
@@ -225,7 +225,7 @@ class Trainer:
 
         current_state = self.current_state
         optim_config = self.config.optim_config
-        
+
         # for token_weighted loss
         token_importance = get_token_importance(
             tokenizer=tokenizer,
@@ -390,23 +390,27 @@ def validate_config(config: TrainConfig):
     #TODO(hyeontae): Implement validation logic
     pass
 
+
 def get_token_importance(
     tokenizer: PreTrainedTokenizer,
     representation: Representation,
 ) -> torch.FloatTensor:
     vocab_size = len(tokenizer)
     token_importance_map = torch.zeros(vocab_size, dtype=torch.float)
-    tokens = [tokenizer.convert_ids_to_tokens(token_id)
-        for token_id in range(vocab_size)]
+    tokens = [
+        tokenizer.convert_ids_to_tokens(token_id)
+        for token_id in range(vocab_size)
+    ]
     token_importances = get_importance(
         tokens=tokens,
         representation=representation,
     )
-    for token_id, token_importance in zip(range(vocab_size), token_importances):
+    for token_id, token_importance in zip(range(vocab_size),
+                                          token_importances):
         token_importance_map[token_id] = token_importance
     return token_importance_map
-    
-    
+
+
 class TaskHelper:
 
     @staticmethod
@@ -495,7 +499,8 @@ class TaskHelper:
             # TODO(hyeontae): check references are SELFIES format
             selfies = Selfies()
             parsed_references = [
-                selfies.decode(reference, verbose=True) for reference in references
+                selfies.decode(reference, verbose=True)
+                for reference in references
             ]
 
         # Only parse predictions

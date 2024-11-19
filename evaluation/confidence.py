@@ -1,6 +1,6 @@
 import logging
-from typing import List
 import math
+from typing import List
 
 import torch
 from rdkit import Chem, DataStructs, RDLogger
@@ -88,13 +88,12 @@ def get_perplexity(
 
         weight = importance
         importance_weighted_loss_per_token = loss_per_token * weight
-        loss_per_sample = importance_weighted_loss_per_token.sum(
-            dim=1)
-        
-        loss_per_sample = loss_per_sample 
+        loss_per_sample = importance_weighted_loss_per_token.sum(dim=1)
+
+        loss_per_sample = loss_per_sample
         perplexity = torch.exp(loss_per_sample)
 
-    perplexity = perplexity ** length_penalty
+    perplexity = perplexity**length_penalty
     return perplexity
 
 
@@ -115,8 +114,7 @@ def get_entropy(
 
     importance_sampling_weight = torch.nn.functional.softmax(
         sentence_log_probs / 0.01, dim=1)
-    entropy = -1 * (sentence_log_probs *
-                    importance_sampling_weight).sum(dim=1)
+    entropy = -1 * (sentence_log_probs * importance_sampling_weight).sum(dim=1)
     return entropy
 
 
@@ -176,8 +174,7 @@ def get_importance_weighted_entropy(
         batch_size, -1)  # (batch_size, num_sequences)
     importance_sampling_weight = torch.nn.functional.softmax(
         sentence_log_probs / 0.01, dim=1)
-    entropy = -1 * (sentence_log_probs *
-                    importance_sampling_weight).sum(dim=1)
+    entropy = -1 * (sentence_log_probs * importance_sampling_weight).sum(dim=1)
 
     return entropy
 
