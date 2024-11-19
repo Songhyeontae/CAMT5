@@ -1,14 +1,16 @@
-from train.config import LossConfig
+import logging
+from typing import Dict, Union
+
+import torch
 from transformers.modeling_outputs import (CausalLMOutputWithPast,
                                            Seq2SeqLMOutput)
 
-from typing import Dict, Union
-import torch
-import logging
+from train.config import LossConfig
 
 Output = Union[Seq2SeqLMOutput, CausalLMOutputWithPast]
 
 logger = logging.getLogger(__name__)
+
 
 def get_loss(
     outputs: Output,
@@ -21,10 +23,10 @@ def get_loss(
 
     logits = outputs.logits
     token_importances = token_importance[targets]
-    token_importances[targets==-100] = -1 # ignore index
-    
+    token_importances[targets == -100] = -1  # ignore index
+
     weights = get_weights(token_importances, loss_config)
-    
+
     loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
     batch_size, seq_length, num_classes = logits.size()
     logits = logits.view(-1, num_classes)
@@ -32,10 +34,12 @@ def get_loss(
 
     loss = loss_fn(logits, targets)
     loss = loss.view(batch_size, seq_length)
-    weighted_loss = (loss * weights).sum(dim=-1).mean() # same as weighted average
-    
+    weighted_loss = (loss *
+                     weights).sum(dim=-1).mean()  # same as weighted average
+
     return weighted_loss
-    
+
+
 def get_weights(
     importances: torch.FloatTensor,
     loss_config: LossConfig,
@@ -47,7 +51,8 @@ def get_weights(
         importances = torch.log1p(importances)
     else:
         raise ValueError("Invalid loss config")
-    
+
     importances[~mask] = -1e9
-    normalized_importances = torch.nn.functional.softmax(importances / loss_config.temperature, dim=-1)
+    normalized_importances = torch.nn.functional.softmax(
+        importances / loss_config.temperature, dim=-1)
     return normalized_importances

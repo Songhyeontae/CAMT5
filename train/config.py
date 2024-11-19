@@ -73,11 +73,13 @@ class OptimConfig:
     lr_scheduler_config: Optional[SchedulerConfig] = field(
         default_factory=SchedulerConfig)
 
+
 @dataclasses.dataclass
 class LossConfig:
     temperature: Optional[float] = 1.0
     importance_weighted_loss: Optional[bool] = False
     log_importance_weighted_loss: Optional[bool] = False
+
 
 @dataclasses.dataclass
 class TrainConfig:
