@@ -1,9 +1,9 @@
 import logging
-from typing import List, Tuple
+from typing import List
+import math
 
 import torch
 from rdkit import Chem, DataStructs, RDLogger
-from rdkit.Chem import AllChem, MACCSkeys
 from rdkit.Chem.Fingerprints import FingerprintMols
 from torch.nn.functional import cross_entropy
 from transformers import PreTrainedTokenizer
@@ -42,6 +42,7 @@ def get_perplexity(
 
     decoded_labels = tokenizer.batch_decode(best_sequence,
                                             skip_special_tokens=True)
+    decoded_labels = [label.replace(" ", "") for label in decoded_labels]
     encoded_labels = tokenizer(
         ["<bom>" + label + "<eom>" for label in decoded_labels],
         max_length=max_length,
@@ -85,12 +86,15 @@ def get_perplexity(
         else:
             importance = torch.ones_like(loss_per_token)
 
-        weight = 0.5 * length_penalty.view(-1, 1) + 0.5 * importance
+        weight = importance
         importance_weighted_loss_per_token = loss_per_token * weight
         loss_per_sample = importance_weighted_loss_per_token.sum(
-            dim=1) / encoded_labels["attention_mask"].sum(dim=1)
+            dim=1)
+        
+        loss_per_sample = loss_per_sample 
         perplexity = torch.exp(loss_per_sample)
 
+    perplexity = perplexity ** length_penalty
     return perplexity
 
 
@@ -112,7 +116,7 @@ def get_entropy(
     importance_sampling_weight = torch.nn.functional.softmax(
         sentence_log_probs / 0.01, dim=1)
     entropy = -1 * (sentence_log_probs *
-                    importance_sampling_weight).mean(dim=1)
+                    importance_sampling_weight).sum(dim=1)
     return entropy
 
 
@@ -136,7 +140,7 @@ def get_len_norm_entropy(
     importance_sampling_weight = torch.nn.functional.softmax(
         sentence_log_probs / 0.01, dim=1)
     entropy = -1 * (sentence_log_probs * importance_sampling_weight /
-                    sequence_lengths).mean(dim=1)
+                    sequence_lengths).sum(dim=1)
 
     return entropy
 
@@ -173,7 +177,7 @@ def get_importance_weighted_entropy(
     importance_sampling_weight = torch.nn.functional.softmax(
         sentence_log_probs / 0.01, dim=1)
     entropy = -1 * (sentence_log_probs *
-                    importance_sampling_weight).mean(dim=1)
+                    importance_sampling_weight).sum(dim=1)
 
     return entropy
 
@@ -257,12 +261,11 @@ def _get_importance(
                 continue
             token_mol = tokenizer.decode([token], skip_special_tokens=True)
             size = representation.get_size(token_mol)
-            token_sizes.append(size)
+            token_sizes.append(math.log1p(size))
         if len(token_sizes) < seq_len:
             token_sizes.extend([-1e9] * (seq_len - len(token_sizes)))
         seq_token_sizes.append(token_sizes)
     seq_token_sizes = torch.tensor(seq_token_sizes).to(device)
-
     importance = torch.nn.functional.softmax(seq_token_sizes / temperature,
                                              dim=1)
 

@@ -1,7 +1,7 @@
 import logging
 import re
 from itertools import product
-from typing import NewType, Protocol, Tuple
+from typing import NewType, Protocol, List
 
 import selfies as sf
 from rdkit import Chem, RDLogger
@@ -48,6 +48,7 @@ class Representation(Protocol):
 
     def get_size(self, text_mol: str) -> int:
         ...
+        
 
 
 class Smiles(Representation):
@@ -93,6 +94,7 @@ class Selfies(Representation):
 
     def decode(self, text_mol: str, verbose=False) -> SMILES:
         try:
+            text_mol = text_mol.replace(" ", "")
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(sf.decoder(text_mol)),
                                       kekuleSmiles=True)
         except:
@@ -164,6 +166,15 @@ def get_representation(representation_type) -> Representation:
 
     return representation_dict[representation_type]()
 
+def get_importance(
+    tokens: List[str],
+    representation: Representation,
+)-> List[int]:
+    token_importance = []
+    for token in tokens:
+        size = representation.get_size(token)
+        token_importance.append(size)
+    return token_importance
 
 def find_order(smile):
     i = 0

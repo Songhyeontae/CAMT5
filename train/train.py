@@ -18,10 +18,11 @@ from transformers.modeling_outputs import (CausalLMOutputWithPast,
 
 from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
-from model.representation import Representation, Selfies
+from model.representation import Representation, Selfies, get_importance
 from train.config import DataConfig, Device, TestTask, TrainConfig
 from train.optimizer import get_optimizer
 from train.scheduler import get_lr_scheduler
+from train.loss import get_loss
 from train.utils import Averager
 from utils import to_absolute_path
 
@@ -141,7 +142,7 @@ class Trainer:
                 preds,
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True)
-            preds = [pred.strip() for pred in decoded_preds]
+            preds = [pred.replace(" ", "").strip() for pred in decoded_preds]
             return preds
 
         input_total, reference_total, prediction_total = [], [], []
@@ -224,6 +225,12 @@ class Trainer:
 
         current_state = self.current_state
         optim_config = self.config.optim_config
+        
+        # for token_weighted loss
+        token_importance = get_token_importance(
+            tokenizer=tokenizer,
+            representation=representation,
+        ).to(accelerator.device)
 
         # Start training loop
         while current_state.train_step <= optim_config.total_steps:
@@ -239,7 +246,12 @@ class Trainer:
                     break
 
                 outputs: Output = model(**batch)
-                loss = outputs.loss
+                loss = get_loss(
+                    outputs=outputs,
+                    targets=batch["labels"],
+                    loss_config=self.config.loss_config,
+                    token_importance=token_importance,
+                )
                 self.average_logger.update(
                     {'loss': loss.detach().float().item()})
                 accelerator.backward(loss / self.config.grad_acc)
@@ -378,7 +390,23 @@ def validate_config(config: TrainConfig):
     #TODO(hyeontae): Implement validation logic
     pass
 
-
+def get_token_importance(
+    tokenizer: PreTrainedTokenizer,
+    representation: Representation,
+) -> torch.FloatTensor:
+    vocab_size = len(tokenizer)
+    token_importance_map = torch.zeros(vocab_size, dtype=torch.float)
+    tokens = [tokenizer.convert_ids_to_tokens(token_id)
+        for token_id in range(vocab_size)]
+    token_importances = get_importance(
+        tokens=tokens,
+        representation=representation,
+    )
+    for token_id, token_importance in zip(range(vocab_size), token_importances):
+        token_importance_map[token_id] = token_importance
+    return token_importance_map
+    
+    
 class TaskHelper:
 
     @staticmethod
@@ -467,7 +495,7 @@ class TaskHelper:
             # TODO(hyeontae): check references are SELFIES format
             selfies = Selfies()
             parsed_references = [
-                selfies.decode(reference) for reference in references
+                selfies.decode(reference, verbose=True) for reference in references
             ]
 
         # Only parse predictions

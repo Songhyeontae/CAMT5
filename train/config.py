@@ -73,6 +73,11 @@ class OptimConfig:
     lr_scheduler_config: Optional[SchedulerConfig] = field(
         default_factory=SchedulerConfig)
 
+@dataclasses.dataclass
+class LossConfig:
+    temperature: Optional[float] = 1.0
+    importance_weighted_loss: Optional[bool] = False
+    log_importance_weighted_loss: Optional[bool] = False
 
 @dataclasses.dataclass
 class TrainConfig:
@@ -86,6 +91,7 @@ class TrainConfig:
     checkpoint: Checkpoint
     logging_config: LoggingConfig
 
+    loss_config: Optional[LossConfig] = None
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
     test_bsz_multi: Optional[int] = 1
     do_compile: Optional[bool] = False
