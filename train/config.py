@@ -88,6 +88,13 @@ class TemperatureSchedulerConfig:
 
 
 @dataclasses.dataclass
+class TokenImportance:
+    atom_count_importance: Optional[bool] = False
+    atom_freq_score_importance: Optional[bool] = False
+    atom_freq_path: Optional[str] = None
+
+
+@dataclasses.dataclass
 class LossConfig:
     temperature: Optional[float] = None
     temperature_scheduler_config: Optional[TemperatureSchedulerConfig] = None
@@ -107,6 +114,8 @@ class TrainConfig:
     checkpoint: Checkpoint
     logging_config: LoggingConfig
 
+    token_importance: Optional[TokenImportance] = field(
+        default_factory=TokenImportance)
     loss_config: Optional[LossConfig] = field(default_factory=LossConfig)
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
     test_bsz_multi: Optional[int] = 1

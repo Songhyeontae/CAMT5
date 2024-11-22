@@ -19,28 +19,23 @@ train_config:
 
   token_importance:
     _target_: train.config.TokenImportance
-    atom_count_importance: true
+    atom_freq_score_importance: true
+    atom_freq_path: "asset/atom_freq/atom_freq.txt"
 
   loss_config:
     _target_: train.config.LossConfig
-    log_importance_weighted_loss: true
-    temperature: 10
-    temperature_scheduler_config:
-      _target_: train.config.TemperatureSchedulerConfig
-      decay: exponential
-      decay_rate: 0.02
-      every_steps: 500
-      min_temperature: 1
+    importance_weighted_loss: true
+    temperature: 20
 
   eval_config:
     task: "text2mol"
     every_steps: 5000
-    eval_results_path: .eval_results/ft_text2mol_frag_micro_base_imp_weighted_T_10_decay_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
-    tensorboard_path: .eval_results/ft_text2mol_frag_micro_base_imp_weighted_T_10_decay_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+    eval_results_path: .eval_results/ft_text2mol_frag_micro_base_freq_imp_weighted_T_20_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
+    tensorboard_path: .eval_results/ft_text2mol_frag_micro_base_freq_imp_weighted_T_20_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_imp_weighted_T_10_decay_${now:%m%d}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_freq_imp_weighted_T_20_${now:%m%d}_stereo
 
   logging_config:
     every_steps: 100
