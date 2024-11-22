@@ -1,7 +1,7 @@
 import logging
 import re
 from itertools import product
-from typing import List, NewType, Protocol
+from typing import Dict, List, NewType, Protocol
 
 import selfies as sf
 from rdkit import Chem, RDLogger
@@ -49,6 +49,10 @@ class Representation(Protocol):
     def get_size(self, text_mol: str) -> int:
         ...
 
+    def get_atom_weighted_score(self, text_mol: str,
+                                atom_scores: Dict[str, float]) -> float:
+        ...
+
 
 class Smiles(Representation):
 
@@ -77,6 +81,17 @@ class Smiles(Representation):
         mol = Chem.MolFromSmiles(smiles)
         atom_cnts = mol.GetNumAtoms()
         return atom_cnts
+
+    def get_atom_weighted_score(self, text_mol: str,
+                                atom_scores: Dict[str, float]) -> float:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return 0
+        atoms = mol.GetAtoms()
+        atom_symbols = [atom.GetSymbol() for atom in atoms]
+        score = sum([atom_scores.get(atom, 0) for atom in atom_symbols])
+        return score
 
 
 class Selfies(Representation):
@@ -113,6 +128,17 @@ class Selfies(Representation):
         mol = Chem.MolFromSmiles(smiles)
         atom_cnts = mol.GetNumAtoms()
         return atom_cnts
+
+    def get_atom_weighted_score(self, text_mol: str,
+                                atom_scores: Dict[str, float]) -> float:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return 0
+        atoms = mol.GetAtoms()
+        atom_symbols = [atom.GetSymbol() for atom in atoms]
+        score = sum([atom_scores.get(atom, 0) for atom in atom_symbols])
+        return score
 
     def _filter_selfies(selfies: str) -> str:
         pattern = r"(\[[^\]]+\]\.?)"
@@ -153,6 +179,17 @@ class Frag(Representation):
             return 0
         atom_cnts = mol.GetNumAtoms()
         return atom_cnts
+
+    def get_atom_weighted_score(self, text_mol: str,
+                                atom_scores: Dict[str, float]) -> float:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return 0
+        atoms = mol.GetAtoms()
+        atom_symbols = [atom.GetSymbol() for atom in atoms]
+        score = sum([atom_scores.get(atom, 0) for atom in atom_symbols])
+        return score
 
 
 def get_representation(representation_type) -> Representation:

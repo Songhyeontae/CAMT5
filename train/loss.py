@@ -18,7 +18,7 @@ def get_loss(
     loss_config: LossConfig,
     token_importance: torch.FloatTensor,
 ) -> torch.FloatTensor:
-    if not loss_config:
+    if loss_config.temperature is None:
         return outputs.loss
 
     logits = outputs.logits

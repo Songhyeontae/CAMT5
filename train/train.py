@@ -21,7 +21,7 @@ from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
 from model.representation import Representation, Selfies, get_importance
 from train.config import (DataConfig, Device, LossConfig, TemperatureDecay,
-                          TestTask, TrainConfig)
+                          TestTask, TokenImportance, TrainConfig)
 from train.loss import get_loss
 from train.optimizer import get_optimizer
 from train.scheduler import get_lr_scheduler
@@ -232,6 +232,7 @@ class Trainer:
         token_importance = get_token_importance(
             tokenizer=tokenizer,
             representation=representation,
+            config=self.config.token_importance,
         ).to(accelerator.device)
 
         # Start training loop
@@ -402,6 +403,7 @@ def validate_config(config: TrainConfig):
 def get_token_importance(
     tokenizer: PreTrainedTokenizer,
     representation: Representation,
+    config: TokenImportance,
 ) -> torch.FloatTensor:
     vocab_size = len(tokenizer)
     token_importance_map = torch.zeros(vocab_size, dtype=torch.float)
@@ -409,14 +411,51 @@ def get_token_importance(
         tokenizer.convert_ids_to_tokens(token_id)
         for token_id in range(vocab_size)
     ]
-    token_importances = get_importance(
-        tokens=tokens,
-        representation=representation,
-    )
+    if config.atom_count_importance:
+        logger.info("Using atom count importance")
+        token_importances = get_importance(
+            tokens=tokens,
+            representation=representation,
+        )
+    elif config.atom_freq_score_importance:
+        logger.info("Using atom frequency score importance")
+        atom_score = _get_atom_score(config.atom_freq_path)
+        token_importances = []
+        for token in tokens:
+            token_importance = representation.get_atom_weighted_score(
+                token, atom_score)
+            token_importances.append(token_importance)
+    else:
+        return torch.ones(vocab_size, dtype=torch.float)
+
     for token_id, token_importance in zip(range(vocab_size),
                                           token_importances):
         token_importance_map[token_id] = token_importance
+
     return token_importance_map
+
+
+def _get_atom_score(atom_freq_path: str) -> Dict[str, float]:
+    if atom_freq_path is None:
+        raise ValueError("Please provide atom frequency path")
+
+    atom_freq_path = to_absolute_path(atom_freq_path)
+    atom_freqs = {}
+    with open(atom_freq_path, "r") as f:
+        atom_freq = f.readlines()
+        for atom in atom_freq:
+            atom_symbol, freq = atom.split("\t")
+            atom_freqs[atom_symbol] = float(freq)
+    scores = {}
+    atom_freq_log_inv = {
+        atom: 1 / math.log1p(freq)
+        for atom, freq in atom_freqs.items()
+    }
+    min_val = min(atom_freq_log_inv.values())
+    for atom, s in atom_freq_log_inv.items():
+        scores[atom] = s / min_val
+
+    return scores
 
 
 def update_temperature(loss_config: LossConfig, current_step: int):
