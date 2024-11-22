@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import math
 import os
 import time
 from itertools import islice
@@ -19,7 +20,8 @@ from transformers.modeling_outputs import (CausalLMOutputWithPast,
 from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
 from model.representation import Representation, Selfies, get_importance
-from train.config import DataConfig, Device, TestTask, TrainConfig
+from train.config import (DataConfig, Device, LossConfig, TemperatureDecay,
+                          TestTask, TrainConfig)
 from train.loss import get_loss
 from train.optimizer import get_optimizer
 from train.scheduler import get_lr_scheduler
@@ -269,9 +271,15 @@ class Trainer:
 
                     optimizer.step()
                     lr_scheduler.step()
+                    update_temperature(self.config.loss_config,
+                                       current_state.train_step)
                     # log hyperparameters
                     lr = optimizer.param_groups[0]['lr']
                     self.average_logger.update({'lr': lr})
+                    if self.config.loss_config.temperature is not None:
+                        temperature = self.config.loss_config.temperature
+                        self.average_logger.update(
+                            {'temperature:': temperature})
 
                     # reset gradients
                     optimizer.zero_grad(set_to_none=True)
@@ -409,6 +417,31 @@ def get_token_importance(
                                           token_importances):
         token_importance_map[token_id] = token_importance
     return token_importance_map
+
+
+def update_temperature(loss_config: LossConfig, current_step: int):
+    temp_scheduler_config = loss_config.temperature_scheduler_config
+    if temp_scheduler_config is None:
+        return
+
+    decay_rate = temp_scheduler_config.decay_rate
+    every_steps = temp_scheduler_config.every_steps
+    min_temperature = temp_scheduler_config.min_temperature
+
+    temperature = loss_config.temperature
+    if current_step % every_steps == 0:
+        if temp_scheduler_config.decay == TemperatureDecay.LINEAR.value:
+            temperature -= decay_rate
+        elif temp_scheduler_config.decay == TemperatureDecay.EXPONENTIAL.value:
+            temperature *= math.exp(-decay_rate)
+        else:
+            raise ValueError(
+                f"Invalid temperature decay: {temp_scheduler_config.decay}")
+
+    if min_temperature is not None:
+        temperature = max(temperature, min_temperature)
+
+    loss_config.temperature = temperature
 
 
 class TaskHelper:
