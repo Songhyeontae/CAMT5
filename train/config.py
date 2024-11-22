@@ -30,6 +30,11 @@ class LRScheduler(Enum):
     CONSTANT = "constant"
 
 
+class TemperatureDecay(Enum):
+    LINEAR = "linear"
+    EXPONENTIAL = "exponential"
+
+
 @dataclasses.dataclass
 class EvalConfig:
     task: TestTask
@@ -75,8 +80,17 @@ class OptimConfig:
 
 
 @dataclasses.dataclass
+class TemperatureSchedulerConfig:
+    decay: TemperatureDecay
+    decay_rate: float
+    every_steps: int
+    min_temperature: Optional[float] = None
+
+
+@dataclasses.dataclass
 class LossConfig:
-    temperature: Optional[float] = 1.0
+    temperature: Optional[float] = None
+    temperature_scheduler_config: Optional[TemperatureSchedulerConfig] = None
     importance_weighted_loss: Optional[bool] = False
     log_importance_weighted_loss: Optional[bool] = False
 
@@ -93,7 +107,7 @@ class TrainConfig:
     checkpoint: Checkpoint
     logging_config: LoggingConfig
 
-    loss_config: Optional[LossConfig] = None
+    loss_config: Optional[LossConfig] = field(default_factory=LossConfig)
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
     test_bsz_multi: Optional[int] = 1
     do_compile: Optional[bool] = False
