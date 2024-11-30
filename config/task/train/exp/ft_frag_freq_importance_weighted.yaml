@@ -17,15 +17,14 @@ train_config:
       name: cosine
       warmup_steps: 1000
 
-  token_importance:
-    _target_: train.config.TokenImportance
-    atom_freq_score_importance: true
-    atom_freq_path: "asset/atom_freq/atom_freq.txt"
-
-  loss_config:
-    _target_: train.config.LossConfig
-    importance_weighted_loss: true
+  importance_weight_config:
+    _target_: train.config.ImportanceWeightConfig
     temperature: 20
+    importance_weighted_loss: true
+    token_importance:
+      _target_: train.config.TokenImportance
+      atom_freq_score_importance: true
+      atom_freq_path: "asset/atom_freq/atom_freq.txt"
 
   eval_config:
     task: "text2mol"

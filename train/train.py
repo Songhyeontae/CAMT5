@@ -20,7 +20,7 @@ from transformers.modeling_outputs import (CausalLMOutputWithPast,
 from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
 from model.representation import Representation, Selfies, get_importance
-from train.config import (DataConfig, Device, LossConfig, TemperatureDecay,
+from train.config import (DataConfig, Device, ImportanceWeightConfig, TemperatureDecay,
                           TestTask, TokenImportance, TrainConfig)
 from train.loss import get_loss
 from train.optimizer import get_optimizer
@@ -229,11 +229,13 @@ class Trainer:
         optim_config = self.config.optim_config
 
         # for token_weighted loss
-        token_importance = get_token_importance(
-            tokenizer=tokenizer,
-            representation=representation,
-            config=self.config.token_importance,
-        ).to(accelerator.device)
+        token_importance = None
+        if self.config.importance_weight_config is not None:
+            token_importance = get_token_importance(
+                tokenizer=tokenizer,
+                representation=representation,
+                config=self.config.importance_weight_config.token_importance,
+            ).to(accelerator.device)
 
         # Start training loop
         while current_state.train_step <= optim_config.total_steps:
@@ -252,7 +254,8 @@ class Trainer:
                 loss = get_loss(
                     outputs=outputs,
                     targets=batch["labels"],
-                    loss_config=self.config.loss_config,
+                    loss=self.config.loss,
+                    importance_weight_config=self.config.importance_weight_config,
                     token_importance=token_importance,
                 )
                 self.average_logger.update(
@@ -272,13 +275,14 @@ class Trainer:
 
                     optimizer.step()
                     lr_scheduler.step()
-                    update_temperature(self.config.loss_config,
-                                       current_state.train_step)
+                    if self.config.importance_weight_config is not None:
+                        update_temperature(self.config.importance_weight_config,
+                                        current_state.train_step)
                     # log hyperparameters
                     lr = optimizer.param_groups[0]['lr']
                     self.average_logger.update({'lr': lr})
-                    if self.config.loss_config.temperature is not None:
-                        temperature = self.config.loss_config.temperature
+                    if self.config.importance_weight_config is not None:
+                        temperature = self.config.importance_weight_config.temperature
                         self.average_logger.update(
                             {'temperature:': temperature})
 
@@ -458,8 +462,8 @@ def _get_atom_score(atom_freq_path: str) -> Dict[str, float]:
     return scores
 
 
-def update_temperature(loss_config: LossConfig, current_step: int):
-    temp_scheduler_config = loss_config.temperature_scheduler_config
+def update_temperature(importance_weight_config: ImportanceWeightConfig, current_step: int):
+    temp_scheduler_config = importance_weight_config.temperature_scheduler_config
     if temp_scheduler_config is None:
         return
 
@@ -467,7 +471,7 @@ def update_temperature(loss_config: LossConfig, current_step: int):
     every_steps = temp_scheduler_config.every_steps
     min_temperature = temp_scheduler_config.min_temperature
 
-    temperature = loss_config.temperature
+    temperature = importance_weight_config.temperature
     if current_step % every_steps == 0:
         if temp_scheduler_config.decay == TemperatureDecay.LINEAR.value:
             temperature -= decay_rate
@@ -480,7 +484,7 @@ def update_temperature(loss_config: LossConfig, current_step: int):
     if min_temperature is not None:
         temperature = max(temperature, min_temperature)
 
-    loss_config.temperature = temperature
+    importance_weight_config.temperature = temperature
 
 
 class TaskHelper:
