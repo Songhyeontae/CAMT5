@@ -34,6 +34,10 @@ class TemperatureDecay(Enum):
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
 
+class Loss(Enum):
+    CE = "cross_entropy"
+    FOCAL = "focal"
+    INVERSE_FOCAL = "inverse_focal"
 
 @dataclasses.dataclass
 class EvalConfig:
@@ -74,7 +78,7 @@ class OptimConfig:
     weight_decay: float
     base_lr: float
     total_steps: int
-    grad_clip: float
+    grad_clip: Optional[float] = field(default=-1.0)
     lr_scheduler_config: Optional[SchedulerConfig] = field(
         default_factory=SchedulerConfig)
 
@@ -95,8 +99,9 @@ class TokenImportance:
 
 
 @dataclasses.dataclass
-class LossConfig:
-    temperature: Optional[float] = None
+class ImportanceWeightConfig:
+    token_importance: TokenImportance
+    temperature: float
     temperature_scheduler_config: Optional[TemperatureSchedulerConfig] = None
     importance_weighted_loss: Optional[bool] = False
     log_importance_weighted_loss: Optional[bool] = False
@@ -114,9 +119,9 @@ class TrainConfig:
     checkpoint: Checkpoint
     logging_config: LoggingConfig
 
-    token_importance: Optional[TokenImportance] = field(
-        default_factory=TokenImportance)
-    loss_config: Optional[LossConfig] = field(default_factory=LossConfig)
+    
+    importance_weight_config: Optional[ImportanceWeightConfig] = None
+    loss: Optional[Loss] = field(default=Loss.CE.value)
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
     test_bsz_multi: Optional[int] = 1
     do_compile: Optional[bool] = False

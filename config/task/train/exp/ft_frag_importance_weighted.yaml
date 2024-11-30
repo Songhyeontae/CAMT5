@@ -17,14 +17,13 @@ train_config:
       name: cosine
       warmup_steps: 1000
 
-  token_importance:
-    _target_: train.config.TokenImportance
-    atom_count_importance: true
-
-  loss_config:
-    _target_: train.config.LossConfig
-    log_importance_weighted_loss: true
+  importance_weight_config:
+    _target_: train.config.ImportanceWeightConfig
     temperature: 5
+    log_importance_weighted_loss: true
+    token_importance:
+      _target_: train.config.TokenImportance
+      atom_count_importance: true
 
   eval_config:
     task: "text2mol"
@@ -54,7 +53,7 @@ model_config:
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
-  num_workers: 8
+  num_workers: 16
   max_seq_len: 512
   max_target_len: 512
   max_num_instances_per_task: 100000
