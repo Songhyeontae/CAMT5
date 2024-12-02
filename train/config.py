@@ -34,10 +34,12 @@ class TemperatureDecay(Enum):
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
 
+
 class Loss(Enum):
     CE = "cross_entropy"
     FOCAL = "focal"
     INVERSE_FOCAL = "inverse_focal"
+
 
 @dataclasses.dataclass
 class EvalConfig:
@@ -92,7 +94,8 @@ class TemperatureSchedulerConfig:
 
 
 @dataclasses.dataclass
-class TokenImportance:
+class TokenImportanceConfig:
+    sim_base_importance: Optional[bool] = False
     atom_count_importance: Optional[bool] = False
     atom_freq_score_importance: Optional[bool] = False
     atom_freq_path: Optional[str] = None
@@ -100,7 +103,6 @@ class TokenImportance:
 
 @dataclasses.dataclass
 class ImportanceWeightConfig:
-    token_importance: TokenImportance
     temperature: float
     temperature_scheduler_config: Optional[TemperatureSchedulerConfig] = None
     importance_weighted_loss: Optional[bool] = False
@@ -119,7 +121,6 @@ class TrainConfig:
     checkpoint: Checkpoint
     logging_config: LoggingConfig
 
-    
     importance_weight_config: Optional[ImportanceWeightConfig] = None
     loss: Optional[Loss] = field(default=Loss.CE.value)
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
@@ -139,6 +140,7 @@ class DataConfig:
     add_explanation: bool
     tk_instruct: bool
 
+    token_importance_config: Optional[TokenImportanceConfig] = None
     input_length: Optional[int] = None
     mlm_probability: Optional[float] = None
     mean_noise_span_length: Optional[float] = None

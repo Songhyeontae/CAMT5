@@ -203,17 +203,6 @@ def get_representation(representation_type) -> Representation:
     return representation_dict[representation_type]()
 
 
-def get_importance(
-    tokens: List[str],
-    representation: Representation,
-) -> List[int]:
-    token_importance = []
-    for token in tokens:
-        size = representation.get_size(token)
-        token_importance.append(size)
-    return token_importance
-
-
 def find_order(smile):
     i = 0
     while True:

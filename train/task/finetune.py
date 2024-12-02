@@ -9,9 +9,10 @@ from transformers import SpecialTokensMixin
 from core.task import BaseTaskCls
 from model.config import ModelConfig
 from model.loader import ModelLoader
+from model.representation import Representation
 from train.config import DataConfig, TrainConfig
+from train.data import DataCollatorForNI
 from train.train import Trainer, validate_config
-from train.utils import DataCollatorForNI
 from utils import to_absolute_path
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class App(BaseTaskCls):
 
         self.trainer = Trainer(self.train_config, self.data_config)
         train_dataloader, test_dataloader, eval_dataloader = self.get_dataloader(
-            tokenizer)
+            tokenizer, representation)
 
         self.trainer.train(
             model=model,
@@ -54,7 +55,9 @@ class App(BaseTaskCls):
         )
 
     def get_dataloader(
-        self, tokenizer: SpecialTokensMixin
+        self,
+        tokenizer: SpecialTokensMixin,
+        representation: Representation,
     ) -> Tuple[DataLoader, DataLoader, DataLoader]:
         dataset = datasets.load_dataset(
             to_absolute_path(self.data_config.exec_file_path),
@@ -69,11 +72,13 @@ class App(BaseTaskCls):
         # TODO(hyeontae): check the logic. Now it is hard coded.
         data_collator = DataCollatorForNI(
             tokenizer,
+            representation,
             padding="longest",
             max_source_length=self.data_config.max_seq_len,
             max_target_length=self.data_config.max_target_len,
             label_pad_token_id=-100,
             pad_to_multiple_of=8,
+            token_importance_config=self.data_config.token_importance_config,
             add_task_name=self.data_config.add_task_name,
             add_task_definition=self.data_config.add_task_definition,
             num_pos_examples=self.data_config.num_pos_examples,

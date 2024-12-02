@@ -1,0 +1,78 @@
+# @package task
+
+train_config:
+  device: "gpu"
+  seed: 42
+  shot: 1
+  do_compile: False
+  batch_size: 48
+  grad_acc: 12
+  optim_config:
+    name: adamw
+    weight_decay: 0.0
+    base_lr: 2e-3
+    total_steps: 50000
+    grad_clip: 30.0
+    lr_scheduler_config:
+      name: cosine
+      warmup_steps: 1000
+
+  importance_weight_config:
+    _target_: train.config.ImportanceWeightConfig
+    temperature: 5
+    importance_weighted_loss: true
+    # temperature_scheduler_config:
+    #   _target_: train.config.TemperatureSchedulerConfig
+    #   decay: exponential
+    #   decay_rate: 0.02
+    #   every_steps: 500
+    #   min_temperature: 0.5
+
+  eval_config:
+    task: "text2mol"
+    every_steps: 5000
+    eval_results_path: .eval_results/ft_text2mol_frag_micro_base_sim_imp_weighted_T_10_decay_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
+    tensorboard_path: .eval_results/ft_text2mol_frag_micro_base_sim_imp_weighted_T_10_decay_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+
+  checkpoint:
+    every_steps: 10000
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_sim_imp_weighted_T_10_decay_${now:%m%d}_stereo
+
+  logging_config:
+    every_steps: 100
+    accuracy: true
+    grad_l2: true
+    weights_l2: true
+
+model_config:
+  name: "google/t5-v1_1-base"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_frag_micro_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"
+  representation_type: frag
+  load_model:
+    from_pretrained: false
+  tokenizer_config:
+    additional_tokens_paths:
+      - "asset/mol_vocabs/frag_stereo.txt"
+      - "asset/mol_vocabs/selfies.txt"
+
+data_config:
+  num_workers: 8
+  max_seq_len: 512
+  max_target_len: 512
+  max_num_instances_per_task: 100000
+  add_task_name: False
+  token_importance_config:
+    _target_: train.config.TokenImportanceConfig
+    # sim_base_importance: True
+    atom_count_importance: True
+    # atom_freq_score_importance: True
+    # atom_freq_path: "asset/atom_freq/atom_freq.txt"
+
+  add_task_definition: True
+  num_pos_examples: 0
+  num_neg_examples: 0
+  add_explanation: False
+  tk_instruct: False
+  exec_file_path: .data/ni_dataset.py
+  data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo
+  task_dir: ${oc.env:DATA_PATH}/tasks
