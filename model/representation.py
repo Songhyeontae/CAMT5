@@ -305,7 +305,8 @@ def linearize(smile: SMILES) -> str:
 
         return frag_string
 
-    m2 = Chem.FragmentOnBonds(m, all_bonds)
+    m2 = Chem.FragmentOnBonds(m, all_bonds)  # list of mols
+    # TODO: (Ambiguity 발생 의심 부분) SMILES로 변환한 뒤 sort 후 Index만 이용해서 m2를 sort
 
     frags = rdmolops.GetMolFrags(m2)
     for frag in frags:

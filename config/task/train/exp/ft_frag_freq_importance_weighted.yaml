@@ -21,10 +21,6 @@ train_config:
     _target_: train.config.ImportanceWeightConfig
     temperature: 20
     importance_weighted_loss: true
-    token_importance:
-      _target_: train.config.TokenImportance
-      atom_freq_score_importance: true
-      atom_freq_path: "asset/atom_freq/atom_freq.txt"
 
   eval_config:
     task: "text2mol"
@@ -67,3 +63,9 @@ data_config:
   exec_file_path: .data/ni_dataset.py
   data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo
   task_dir: ${oc.env:DATA_PATH}/tasks
+
+  token_importance_config:
+    _target_: train.config.TokenImportanceConfig
+    token_importance: atom_freq
+    special_token_importance: 1
+    atom_freq_path: "asset/atom_freq/atom_freq.txt"

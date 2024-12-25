@@ -9,9 +9,10 @@ from transformers import SpecialTokensMixin
 from core.task import BaseTaskCls
 from model.config import ModelConfig
 from model.loader import ModelLoader
+from model.representation import Representation
 from train.config import DataConfig, TrainConfig
 from train.train import Trainer, validate_config
-from train.utils import DataCollatorForNI
+from train.utils import DataCollatorForTextToMol
 from utils import to_absolute_path
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class App(BaseTaskCls):
 
         self.trainer = Trainer(self.train_config, self.data_config)
         train_dataloader, test_dataloader, eval_dataloader = self.get_dataloader(
-            tokenizer)
+            tokenizer, representation)
 
         self.trainer.train(
             model=model,
@@ -54,7 +55,7 @@ class App(BaseTaskCls):
         )
 
     def get_dataloader(
-        self, tokenizer: SpecialTokensMixin
+        self, tokenizer: SpecialTokensMixin, representation: Representation
     ) -> Tuple[DataLoader, DataLoader, DataLoader]:
         dataset = datasets.load_dataset(
             to_absolute_path(self.data_config.exec_file_path),
@@ -67,19 +68,25 @@ class App(BaseTaskCls):
         )
 
         # TODO(hyeontae): check the logic. Now it is hard coded.
-        data_collator = DataCollatorForNI(
-            tokenizer,
+        train_data_collator = DataCollatorForTextToMol(
+            tokenizer=tokenizer,
+            representation=representation,
             padding="longest",
             max_source_length=self.data_config.max_seq_len,
             max_target_length=self.data_config.max_target_len,
             label_pad_token_id=-100,
             pad_to_multiple_of=8,
-            add_task_name=self.data_config.add_task_name,
-            add_task_definition=self.data_config.add_task_definition,
-            num_pos_examples=self.data_config.num_pos_examples,
-            num_neg_examples=self.data_config.num_neg_examples,
-            add_explanation=self.data_config.add_explanation,
-            tk_instruct=self.data_config.tk_instruct,
+            token_importance_config=self.data_config.token_importance_config,
+        )
+
+        val_data_collator = DataCollatorForTextToMol(
+            tokenizer=tokenizer,
+            representation=representation,
+            padding="longest",
+            max_source_length=self.data_config.max_seq_len,
+            max_target_length=self.data_config.max_target_len,
+            label_pad_token_id=-100,
+            pad_to_multiple_of=8,
         )
 
         batch_size = self.train_config.batch_size // self.train_config.grad_acc
@@ -88,7 +95,7 @@ class App(BaseTaskCls):
         train_data_loader = DataLoader(
             dataset["train"],
             shuffle=True,
-            collate_fn=data_collator,
+            collate_fn=train_data_collator,
             batch_size=batch_size,
             num_workers=self.data_config.num_workers,
             pin_memory=True,
@@ -99,7 +106,7 @@ class App(BaseTaskCls):
         eval_data_loader = DataLoader(
             dataset["validation"],
             shuffle=False,
-            collate_fn=data_collator,
+            collate_fn=val_data_collator,
             batch_size=batch_size * self.train_config.test_bsz_multi,
             num_workers=self.data_config.num_workers,
             pin_memory=True,
@@ -110,7 +117,7 @@ class App(BaseTaskCls):
         test_data_loader = DataLoader(
             dataset["test"],
             shuffle=False,
-            collate_fn=data_collator,
+            collate_fn=val_data_collator,
             batch_size=batch_size * self.train_config.test_bsz_multi,
             num_workers=self.data_config.num_workers,
             pin_memory=True,

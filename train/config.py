@@ -13,6 +13,12 @@ class TestTask(Enum):
     MOLNET = "molnet"
 
 
+class TokenImportance(Enum):
+    ATOM_COUNT = "atom_count"
+    ATOM_FREQ = "atom_freq"
+    PREDEFINED = "predefined"
+
+
 class Device(Enum):
     CPU = "cpu"
     GPU = "gpu"
@@ -34,10 +40,12 @@ class TemperatureDecay(Enum):
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
 
+
 class Loss(Enum):
     CE = "cross_entropy"
     FOCAL = "focal"
     INVERSE_FOCAL = "inverse_focal"
+
 
 @dataclasses.dataclass
 class EvalConfig:
@@ -92,17 +100,19 @@ class TemperatureSchedulerConfig:
 
 
 @dataclasses.dataclass
-class TokenImportance:
-    atom_count_importance: Optional[bool] = False
-    atom_freq_score_importance: Optional[bool] = False
+class TokenImportanceConfig:
+    token_importance: TokenImportance
+    special_token_importance: Optional[float] = 1.0
+    # path to the atom count file
     atom_freq_path: Optional[str] = None
 
 
 @dataclasses.dataclass
 class ImportanceWeightConfig:
-    token_importance: TokenImportance
     temperature: float
     temperature_scheduler_config: Optional[TemperatureSchedulerConfig] = None
+
+    # importance weight or log importance weight
     importance_weighted_loss: Optional[bool] = False
     log_importance_weighted_loss: Optional[bool] = False
 
@@ -119,7 +129,6 @@ class TrainConfig:
     checkpoint: Checkpoint
     logging_config: LoggingConfig
 
-    
     importance_weight_config: Optional[ImportanceWeightConfig] = None
     loss: Optional[Loss] = field(default=Loss.CE.value)
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
@@ -149,3 +158,5 @@ class DataConfig:
     task_dir: Optional[str] = None
     max_num_instances_per_task: Optional[int] = None
     max_num_instances_per_eval_task: Optional[int] = None
+
+    token_importance_config: Optional[TokenImportanceConfig] = None

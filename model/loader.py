@@ -105,7 +105,10 @@ class ModelLoader:
         # check whether checkpoint exists
         if self.model_config.checkpoint_path:
             checkpoint_path = self.model_config.checkpoint_path
-            model.load_state_dict(torch.load(checkpoint_path), strict=True)
+            map_location = "cuda" if torch.cuda.is_available() else "cpu"
+            model.load_state_dict(torch.load(checkpoint_path,
+                                             map_location=map_location),
+                                  strict=True)
             torch.cuda.empty_cache()
 
             logger.info(f"Loaded model from checkpoint: {checkpoint_path}")
