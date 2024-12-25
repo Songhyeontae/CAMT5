@@ -59,7 +59,7 @@ model_config:
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
-  num_workers: 16
+  num_workers: 8
   max_seq_len: 512
   max_target_len: 512
   max_num_instances_per_task: 100000
@@ -72,3 +72,8 @@ data_config:
   exec_file_path: .data/ni_dataset.py
   data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo
   task_dir: ${oc.env:DATA_PATH}/tasks
+
+  token_importance_config:
+    _target_: train.config.TokenImportanceConfig
+    token_importance: atom_count
+    special_token_importance: 1

@@ -25,12 +25,12 @@ train_config:
   eval_config:
     task: "text2mol"
     every_steps: 5000
-    eval_results_path: .eval_results/ft_text2mol_frag_micro_base_imp_weighted_T_5_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
-    tensorboard_path: .eval_results/ft_text2mol_frag_micro_base_imp_weighted_T_5_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+    eval_results_path: .eval_results/ft_text2mol_frag_micro_base_sim_imp_weighted_T_5_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
+    tensorboard_path: .eval_results/ft_text2mol_frag_micro_base_sim_imp_weighted_T_5_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_imp_weighted_T_5_${now:%m%d}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_sim_imp_weighted_T_5_${now:%m%d}_stereo
 
   logging_config:
     every_steps: 100
@@ -60,11 +60,11 @@ data_config:
   num_neg_examples: 0
   add_explanation: False
   tk_instruct: False
-  exec_file_path: .data/ni_dataset.py
-  data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo
+  exec_file_path: .data/ni_dataset_w_sim.py
+  data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo_sim
   task_dir: ${oc.env:DATA_PATH}/tasks
 
   token_importance_config:
     _target_: train.config.TokenImportanceConfig
-    token_importance: atom_count
-    special_token_importance: 1
+    token_importance: predefined
+    special_token_importance: 0
