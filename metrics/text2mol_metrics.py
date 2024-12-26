@@ -78,3 +78,21 @@ def get_text2mol_metrics(
         "correct_cnt": sum(exact_canon_list),
         "invalid_ratio": invalid_ratio
     }
+
+
+def get_rdk_metric(prediction, reference) -> float:
+    gen_mol = Chem.MolFromSmiles(prediction)
+    if gen_mol == None:
+        gen_mol = Chem.MolFromSmiles(DUMMY_SMILES)
+    target_mol = Chem.MolFromSmiles(reference)
+    gen_smiles = Chem.MolToSmiles(gen_mol)
+
+    if gen_smiles == DUMMY_SMILES:
+        return 0
+
+    target_fp_rdk = FingerprintMols.GetRDKFingerprint(target_mol)
+    gen_fp_rdk = FingerprintMols.GetRDKFingerprint(gen_mol)
+
+    s_rdk = DataStructs.TanimotoSimilarity(gen_fp_rdk, target_fp_rdk)
+
+    return s_rdk
