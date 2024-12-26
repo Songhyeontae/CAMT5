@@ -3,7 +3,7 @@ from typing import Tuple
 
 import datasets
 from accelerate.utils import set_seed
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from transformers import SpecialTokensMixin
 
 from core.task import BaseTaskCls
@@ -92,34 +92,34 @@ class App(BaseTaskCls):
         # train
         train_data_loader = DataLoader(
             dataset["train"],
-            shuffle=True,
+            sampler=RandomSampler(dataset["train"]),
             collate_fn=data_collator,
             batch_size=batch_size,
             num_workers=self.data_config.num_workers,
             pin_memory=True,
-            drop_last=False,
+            drop_last=True,
         )
 
         # validation
         eval_data_loader = DataLoader(
             dataset["validation"],
-            shuffle=False,
+            sampler=RandomSampler(dataset["validation"]),
             collate_fn=data_collator,
             batch_size=batch_size * self.train_config.test_bsz_multi,
             num_workers=self.data_config.num_workers,
             pin_memory=True,
-            drop_last=False,
+            drop_last=True,
         )
 
         # test
         test_data_loader = DataLoader(
             dataset["test"],
-            shuffle=False,
+            sampler=RandomSampler(dataset["test"]),
             collate_fn=data_collator,
             batch_size=batch_size * self.train_config.test_bsz_multi,
             num_workers=self.data_config.num_workers,
             pin_memory=True,
-            drop_last=False,
+            drop_last=True,
         )
 
         return train_data_loader, test_data_loader, eval_data_loader

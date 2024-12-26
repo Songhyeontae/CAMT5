@@ -1,24 +1,25 @@
-from transformers.data.data_collator import *
 import random
 import string
 
-from model.representation import Representation
-from rdkit import Chem, DataStructs, RDLogger
+from rdkit import RDLogger
 from rdkit.Chem.Fingerprints import FingerprintMols
-import _pickle
+from transformers.data.data_collator import *
+
 from metrics.text2mol_metrics import get_rdk_metric
+from model.representation import Representation
+
 RDLogger.DisableLog('rdApp.*')
 
-from train.config import TokenImportanceConfig
-
 import math
-from typing import List, Optional, Union, Dict
-from transformers import PreTrainedTokenizerBase
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Union
 
-from utils import to_absolute_path
 import torch
 from torch.nn.utils.rnn import pad_sequence
+from transformers import PreTrainedTokenizerBase
+
+from train.config import TokenImportanceConfig
+from utils import to_absolute_path
 
 
 @dataclass
@@ -213,10 +214,14 @@ class DataCollatorForNI:
         if "output" in batch[0]["Instance"] and batch[0]["Instance"]["output"]:
             # Randomly select one reference if multiple are provided.
             labels = [random.choice(ex["Instance"]["output"]) for ex in batch]
+            importance = []
+            if "importance" in batch[0]["Instance"]:
+                importance = [
+                    ex["Instance"]["importance"][0] for ex in batch
+                ]
             if self.token_importance_config is not None:
-                importance_scores = self._get_token_importance(
-                    labels)
-                
+                importance_scores = self._get_token_importance(labels, importance)
+
             if self.text_only:
                 model_inputs["labels"] = labels
             else:
@@ -228,22 +233,25 @@ class DataCollatorForNI:
                     truncation=True,
                     pad_to_multiple_of=self.pad_to_multiple_of,
                 )
-                
+
                 label_mask = labels["attention_mask"].bool()
                 model_inputs["labels"] = labels["input_ids"].masked_fill(
                     ~label_mask, self.label_pad_token_id)
-            
+
             if self.token_importance_config is not None:
                 model_inputs["token_importance"] = pad_sequence_to_length(
-                        importance_scores, batch_first=True, padding_value=-1, desired_length=model_inputs["labels"].shape[1])
+                    importance_scores,
+                    batch_first=True,
+                    padding_value=-1,
+                    desired_length=model_inputs["labels"].shape[1])
         else:
             model_inputs["labels"] = None
         return model_inputs
 
-
     def _get_token_importance(
         self,
         label_texts: List[str],
+        importances: List[List[float]]
     ) -> List[torch.Tensor]:
         """
         Calculates importance of each output token by removing one at a time.
@@ -255,54 +263,19 @@ class DataCollatorForNI:
             list[list[float]]: Importance scores for each token.
         """
         config = self.token_importance_config
-        
+
         if config.sim_base_importance:
-            return _get_similarity_based_importance(self.tokenizer, self.representation, label_texts)
+            return [torch.Tensor(importance) for importance in importances]
         elif config.atom_count_importance:
-            return _get_atom_count_based_importance(self.tokenizer, self.representation, label_texts)
+            return _get_atom_count_based_importance(self.tokenizer,
+                                                    self.representation,
+                                                    label_texts)
         elif config.atom_freq_score_importance:
-            return _get_atom_freq_score_based_importance(self.tokenizer, self.representation, config.atom_freq_path, label_texts)
+            return _get_atom_freq_score_based_importance(
+                self.tokenizer, self.representation, config.atom_freq_path,
+                label_texts)
         else:
             raise ValueError("Invalid importance configuration")
-        
-
-    
-def _get_similarity_based_importance(
-    tokenizer: PreTrainedTokenizerBase,
-    representation: Representation,
-    label_texts: List[str],
-) -> List[torch.Tensor]:
-    all_importance_scores = []
-    for label_text in label_texts:
-        importance_scores = []  # Store importance scores for the current label
-        importance_scores.append(0) # for <bom> token
-        tokenized_label = tokenizer.tokenize(label_text)[1:-1]  # Remove <bom> and <eom> tokens
-
-        for i in range(len(tokenized_label)):
-            modified_tokens = tokenized_label[:i] + tokenized_label[i+1:]
-            
-            modified = "".join(modified_tokens)
-            label = "".join(tokenized_label)
-            similarity = _calculate_similarity(representation, modified, label)
-            importance_score = 1 - similarity
-            importance_scores.append(importance_score)
-        importance_scores.append(0) # for <eom> token
-        all_importance_scores.append(torch.Tensor(importance_scores))
-
-    return all_importance_scores
-    
-def _calculate_similarity(
-    representation: Representation,
-    modified_txt: str,
-    label_txt: str,
-) -> float:
-    """
-    Calculates similarity between two texts using cosine similarity.
-    """
-    modified = representation.decode(modified_txt)
-    label = representation.decode(label_txt)
-    similarity = get_rdk_metric(modified, label)
-    return similarity
 
 def _get_atom_count_based_importance(
     tokenizer: PreTrainedTokenizerBase,
@@ -320,7 +293,8 @@ def _get_atom_count_based_importance(
         all_importance_scores.append(torch.Tensor(importance_scores))
 
     return all_importance_scores
-    
+
+
 def _get_atom_freq_score_based_importance(
     tokenizer: PreTrainedTokenizerBase,
     representation: Representation,
@@ -331,13 +305,14 @@ def _get_atom_freq_score_based_importance(
     for label_text in label_texts:
         importance_scores = []
         tokenized_label = tokenizer.tokenize(label_text)
-        
+
         for token in tokenized_label:
             atom_score = _get_atom_score(atom_freq_path)
-            atom_freq = representation.get_atom_weighted_score(token, atom_score)
+            atom_freq = representation.get_atom_weighted_score(
+                token, atom_score)
             importance_scores.append(atom_freq)
         all_token_importance_scores.append(torch.Tensor(importance_scores))
-    
+
     return all_token_importance_scores
 
 
@@ -364,8 +339,10 @@ def _get_atom_score(atom_freq_path: str) -> Dict[str, float]:
     return scores
 
 
-
-def pad_sequence_to_length(sequences, desired_length, padding_value=0, batch_first=True):
+def pad_sequence_to_length(sequences,
+                           desired_length,
+                           padding_value=0,
+                           batch_first=True):
     """
     Pads or truncates sequences to the desired length.
 
@@ -387,8 +364,9 @@ def pad_sequence_to_length(sequences, desired_length, padding_value=0, batch_fir
         # Pad if the sequence is shorter than desired_length
         else:
             padding_needed = desired_length - len(seq)
-            padded_seq = torch.cat([seq, torch.full((padding_needed,), padding_value)])
-        
+            padded_seq = torch.cat(
+                [seq, torch.full((padding_needed, ), padding_value)])
+
         padded_sequences.append(padded_seq)
 
     # Stack the padded sequences into a tensor

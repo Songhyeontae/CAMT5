@@ -19,14 +19,14 @@ train_config:
 
   importance_weight_config:
     _target_: train.config.ImportanceWeightConfig
-    temperature: 5
+    temperature: 10
     importance_weighted_loss: true
-    # temperature_scheduler_config:
-    #   _target_: train.config.TemperatureSchedulerConfig
-    #   decay: exponential
-    #   decay_rate: 0.02
-    #   every_steps: 500
-    #   min_temperature: 0.5
+    temperature_scheduler_config:
+      _target_: train.config.TemperatureSchedulerConfig
+      decay: exponential
+      decay_rate: 0.02
+      every_steps: 500
+      min_temperature: 0.5
 
   eval_config:
     task: "text2mol"
@@ -56,15 +56,15 @@ model_config:
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
-  num_workers: 8
+  num_workers: 16
   max_seq_len: 512
   max_target_len: 512
   max_num_instances_per_task: 100000
   add_task_name: False
   token_importance_config:
     _target_: train.config.TokenImportanceConfig
-    # sim_base_importance: True
-    atom_count_importance: True
+    sim_base_importance: True
+    # atom_count_importance: True
     # atom_freq_score_importance: True
     # atom_freq_path: "asset/atom_freq/atom_freq.txt"
 
@@ -73,6 +73,6 @@ data_config:
   num_neg_examples: 0
   add_explanation: False
   tk_instruct: False
-  exec_file_path: .data/ni_dataset.py
-  data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo
+  exec_file_path: .data/ni_dataset_w_sim.py
+  data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo_sim
   task_dir: ${oc.env:DATA_PATH}/tasks

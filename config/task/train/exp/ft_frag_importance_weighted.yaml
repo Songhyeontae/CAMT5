@@ -21,9 +21,6 @@ train_config:
     _target_: train.config.ImportanceWeightConfig
     temperature: 5
     log_importance_weighted_loss: true
-    token_importance:
-      _target_: train.config.TokenImportance
-      atom_count_importance: true
 
   eval_config:
     task: "text2mol"
@@ -58,6 +55,9 @@ data_config:
   max_target_len: 512
   max_num_instances_per_task: 100000
   add_task_name: False
+  token_importance_config:
+    _target_: train.config.TokenImportanceConfig
+    atom_count_importance: True
   add_task_definition: True
   num_pos_examples: 0
   num_neg_examples: 0
