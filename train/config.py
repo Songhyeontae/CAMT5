@@ -51,6 +51,7 @@ class Loss(Enum):
 class EvalConfig:
     task: TestTask
     every_steps: int
+    max_target_len: Optional[int] = None
     total_steps: Optional[int] = None
     eval_results_path: Optional[str] = None
     tensorboard_path: Optional[str] = None
@@ -137,26 +138,28 @@ class TrainConfig:
 
 
 @dataclasses.dataclass
-class DataConfig:
-    num_workers: int
+class Text2MolDataConfig:
     max_seq_len: int
     max_target_len: int
-    add_task_name: bool
-    add_task_definition: bool
-    num_pos_examples: int
-    num_neg_examples: int
-    add_explanation: bool
-    tk_instruct: bool
-
-    input_length: Optional[int] = None
-    mlm_probability: Optional[float] = None
-    mean_noise_span_length: Optional[float] = None
-
-    # config for finetuning dataset
-    exec_file_path: Optional[str] = None
-    data_dir: Optional[str] = None
-    task_dir: Optional[str] = None
+    exec_file_path: str
+    data_dir: str
+    task_dir: str
     max_num_instances_per_task: Optional[int] = None
     max_num_instances_per_eval_task: Optional[int] = None
 
+
+# Config for MLM Task. Use C4, zinc dataset.
+@dataclasses.dataclass
+class MLMDataConfig:
+    mlm_probability: float
+    mean_noise_span_length: int
+    input_length: int
+
+
+@dataclasses.dataclass
+class DataConfig:
+    num_workers: int
+
+    text_2_mol_data_config: Optional[Text2MolDataConfig] = None
+    mlm_data_config: Optional[MLMDataConfig] = None
     token_importance_config: Optional[TokenImportanceConfig] = None

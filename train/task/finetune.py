@@ -12,7 +12,7 @@ from model.loader import ModelLoader
 from model.representation import Representation
 from train.config import DataConfig, TrainConfig
 from train.train import Trainer, validate_config
-from train.utils import DataCollatorForTextToMol
+from train.utils import DataCollatorForText2Mol
 from utils import to_absolute_path
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,11 @@ class App(BaseTaskCls):
         representation = self.model_loader.load_representation()
         tokenizer = self.model_loader.load_tokenizer()
 
-        self.trainer = Trainer(self.train_config, self.data_config)
+        # for evaluation, we need to generate the model output
+        self.train_config.eval_config.max_target_len = \
+            self.data_config.text_2_mol_data_config.max_target_len
+
+        self.trainer = Trainer(self.train_config)
         train_dataloader, test_dataloader, eval_dataloader = self.get_dataloader(
             tokenizer, representation)
 
@@ -58,33 +62,40 @@ class App(BaseTaskCls):
         self, tokenizer: SpecialTokensMixin, representation: Representation
     ) -> Tuple[DataLoader, DataLoader, DataLoader]:
         dataset = datasets.load_dataset(
-            to_absolute_path(self.data_config.exec_file_path),
-            data_dir=to_absolute_path(self.data_config.data_dir),
-            task_dir=to_absolute_path(self.data_config.task_dir),
-            max_num_instances_per_task=self.data_config.
+            to_absolute_path(
+                self.data_config.text_2_mol_data_config.exec_file_path),
+            data_dir=to_absolute_path(
+                self.data_config.text_2_mol_data_config.data_dir),
+            task_dir=to_absolute_path(
+                self.data_config.text_2_mol_data_config.task_dir),
+            max_num_instances_per_task=self.data_config.text_2_mol_data_config.
             max_num_instances_per_task,
             max_num_instances_per_eval_task=self.data_config.
-            max_num_instances_per_eval_task,
+            text_2_mol_data_config.max_num_instances_per_eval_task,
         )
 
         # TODO(hyeontae): check the logic. Now it is hard coded.
-        train_data_collator = DataCollatorForTextToMol(
+        train_data_collator = DataCollatorForText2Mol(
             tokenizer=tokenizer,
             representation=representation,
             padding="longest",
-            max_source_length=self.data_config.max_seq_len,
-            max_target_length=self.data_config.max_target_len,
+            max_source_length=self.data_config.text_2_mol_data_config.
+            max_seq_len,
+            max_target_length=self.data_config.text_2_mol_data_config.
+            max_target_len,
             label_pad_token_id=-100,
             pad_to_multiple_of=8,
             token_importance_config=self.data_config.token_importance_config,
         )
 
-        val_data_collator = DataCollatorForTextToMol(
+        val_data_collator = DataCollatorForText2Mol(
             tokenizer=tokenizer,
             representation=representation,
             padding="longest",
-            max_source_length=self.data_config.max_seq_len,
-            max_target_length=self.data_config.max_target_len,
+            max_source_length=self.data_config.text_2_mol_data_config.
+            max_seq_len,
+            max_target_length=self.data_config.text_2_mol_data_config.
+            max_target_len,
             label_pad_token_id=-100,
             pad_to_multiple_of=8,
         )
