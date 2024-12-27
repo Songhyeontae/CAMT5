@@ -47,12 +47,11 @@ class GenerationResult:
 
 class Trainer:
 
-    def __init__(self, config: TrainConfig, data_config: DataConfig):
+    def __init__(self, config: TrainConfig):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
         self.config = config
-        self.data_config = data_config
         # Averager for logging
         self.average_logger = Averager()
         if config.eval_config.tensorboard_path is not None:
@@ -156,7 +155,7 @@ class Trainer:
                                 total=total_steps):
             batch = batch.to(accelerator.device)
             generation_result = TaskHelper.generate_results(
-                test_task, model, self.data_config, batch)
+                test_task, model, eval_config.max_target_len, batch)
 
             decoded_inputs = decode(batch["input_ids"])
             decoded_references = decode(batch["labels"])
@@ -203,8 +202,9 @@ class Trainer:
             ))
 
         for k, v in eval_metric.items():
-            self.tensorboard_writer.add_scalar(f"{prefix}/{k}", v,
-                                               self.current_state.train_step)
+            if self.config.eval_config.tensorboard_path is not None:
+                self.tensorboard_writer.add_scalar(
+                    f"{prefix}/{k}", v, self.current_state.train_step)
 
         self._log_stats(eval_metric, prefix=prefix)
         if eval_config.eval_results_path is not None:
@@ -340,8 +340,9 @@ class Trainer:
 
         # Write to tensorboard
         for k, v in averaged_metrics.items():
-            self.tensorboard_writer.add_scalar(f"train/{k}", v,
-                                               self.current_state.train_step)
+            if self.config.eval_config.tensorboard_path is not None:
+                self.tensorboard_writer.add_scalar(
+                    f"train/{k}", v, self.current_state.train_step)
 
         self._log_stats(averaged_metrics, prefix='train')
         self.current_state.last_log = time.time()
@@ -446,8 +447,7 @@ class TaskHelper:
         return metric
 
     @staticmethod
-    def generate_results(test_task: TestTask, model: Model,
-                         data_config: DataConfig,
+    def generate_results(test_task: TestTask, model: Model, max_length: int,
                          batch: Dict[str, torch.Tensor]) -> GenerationResult:
         generation_result = GenerationResult(predictions=None, scores=None)
 
@@ -458,7 +458,7 @@ class TaskHelper:
             results = model.generate(
                 input_ids=batch['input_ids'],
                 attention_mask=batch['attention_mask'],
-                max_length=data_config.max_target_len,
+                max_length=max_length,
                 generation_config=model.generation_config,
                 return_dict_in_generate=True,
                 output_scores=True,
@@ -469,7 +469,7 @@ class TaskHelper:
             generation_result.predictions = model.generate(
                 input_ids=batch['input_ids'],
                 attention_mask=batch['attention_mask'],
-                max_length=data_config.max_target_len,
+                max_length=max_length,
             )
 
         return generation_result

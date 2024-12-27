@@ -16,7 +16,7 @@ IMPORTANCE_PAD_VALUE = -1.0
 
 
 @dataclass
-class DataCollatorForTextToMol:
+class DataCollatorForText2Mol:
     tokenizer: PreTrainedTokenizerBase
     representation: Representation
     padding: Union[bool, str, PaddingStrategy] = True
