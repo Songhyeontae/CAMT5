@@ -21,9 +21,6 @@ train_config:
     _target_: train.config.ImportanceWeightConfig
     temperature: 10
     log_importance_weighted_loss: true
-    token_importance:
-      _target_: train.config.TokenImportance
-      atom_count_importance: true
     temperature_scheduler_config:
       _target_: train.config.TemperatureSchedulerConfig
       decay: exponential
