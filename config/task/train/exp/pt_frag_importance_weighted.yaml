@@ -55,7 +55,7 @@ model_config:
 
 data_config:
   _target_: train.config.DataConfig
-  num_workers: 1
+  num_workers: 8
 
   mlm_data_config:
     _target_: train.config.MLMDataConfig
