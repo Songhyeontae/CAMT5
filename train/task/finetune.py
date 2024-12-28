@@ -11,8 +11,8 @@ from model.config import ModelConfig
 from model.loader import ModelLoader
 from model.representation import Representation
 from train.config import DataConfig, TrainConfig
+from train.data import DataCollatorForText2Mol
 from train.train import Trainer, validate_config
-from train.utils import DataCollatorForText2Mol
 from utils import to_absolute_path
 
 logger = logging.getLogger(__name__)

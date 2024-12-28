@@ -20,8 +20,8 @@ from transformers.modeling_outputs import (CausalLMOutputWithPast,
 from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
 from model.representation import Representation, Selfies, get_importance
-from train.config import (DataConfig, Device, ImportanceWeightConfig,
-                          TemperatureDecay, TestTask, TrainConfig)
+from train.config import (Device, ImportanceWeightConfig, TemperatureDecay,
+                          TestTask, TrainConfig)
 from train.loss import get_loss
 from train.optimizer import get_optimizer
 from train.scheduler import get_lr_scheduler
@@ -132,9 +132,15 @@ class Trainer:
 
         eval_config = self.config.eval_config
         test_task = eval_config.task
-        total_steps = len(dataloader)
-        if eval_config.total_steps:
-            total_steps = min(eval_config.total_steps, total_steps)
+        if isinstance(dataloader.dataset, IterableDataset):
+            if eval_config.total_steps is None:
+                raise ValueError(
+                    "Total steps must be set when using IterableDataset")
+            total_steps = eval_config.total_steps
+        else:
+            total_steps = len(dataloader)
+            if eval_config.total_steps:
+                total_steps = min(eval_config.total_steps, total_steps)
 
         metric = TaskHelper.set_task_metrics(test_task)
 
@@ -149,10 +155,8 @@ class Trainer:
             return preds
 
         input_total, reference_total, prediction_total = [], [], []
-        samples_seen = 0
 
-        for step, batch in tqdm(enumerate(islice(dataloader, total_steps)),
-                                total=total_steps):
+        for batch in tqdm(islice(dataloader, total_steps), total=total_steps):
             batch = batch.to(accelerator.device)
             generation_result = TaskHelper.generate_results(
                 test_task, model, eval_config.max_target_len, batch)
@@ -170,15 +174,6 @@ class Trainer:
                     decoded_references,
                     generation_result.scores,
                 )
-
-            # If we are in a multiprocess environment, the last batch has duplicates
-            if step == len(dataloader) - 1:
-                parsed_predictions = parsed_predictions[:len(dataloader.dataset
-                                                             ) - samples_seen]
-                parsed_references = parsed_references[:len(dataloader.dataset
-                                                           ) - samples_seen]
-            else:
-                samples_seen += len(parsed_references)
 
             # Update metrics
             metric.add_batch(
@@ -290,7 +285,7 @@ class Trainer:
 
                     # evaluate and save checkpoint
                     if accelerator.is_main_process:
-                        if self.config.eval_config != None:
+                        if self.config.eval_config.every_steps != None and validation_dataloader != None:
                             self._maybe_validate(
                                 dataloader=validation_dataloader,
                                 model=accelerator.unwrap_model(model),
@@ -438,6 +433,7 @@ class TaskHelper:
             TestTask.DTI.value: "metrics/dti_metrics",
             TestTask.PEER.value: "metrics/dti_metrics",
             TestTask.MOLNET.value: "metrics/dti_metrics",
+            TestTask.MLM.value: "metrics/mlm_metrics",
         }
         if test_task not in task_metric_path_dict:
             raise ValueError(f"Invalid test task: {test_task}")
@@ -465,10 +461,18 @@ class TaskHelper:
             )
             generation_result.predictions = results.sequences
             generation_result.scores = results.scores
-        else:
+        elif test_task in [
+                TestTask.MOL2TEXT.value, TestTask.TEXT2MOL.value,
+                TestTask.TEXT2FRAG.value
+        ]:
             generation_result.predictions = model.generate(
                 input_ids=batch['input_ids'],
                 attention_mask=batch['attention_mask'],
+                max_length=max_length,
+            )
+        elif test_task == TestTask.MLM.value:
+            generation_result.predictions = model.generate(
+                input_ids=batch['input_ids'],
                 max_length=max_length,
             )
 
@@ -530,6 +534,11 @@ class TaskHelper:
             ]
             parsed_inputs = inputs
             parsed_references = references
+
+        elif test_task == TestTask.MLM.value:
+            parsed_inputs = inputs
+            parsed_predictions = predictions
+            parsed_references = references
         else:
             raise ValueError(f"Invalid test task: {test_task}")
 
@@ -552,6 +561,8 @@ class TaskHelper:
         elif test_task == TestTask.MOL2TEXT.value:
             pass
         elif test_task == TestTask.TEXT2FRAG.value:
+            pass
+        elif test_task == TestTask.MLM.value:
             pass
         elif test_task in [
                 TestTask.DTI.value, TestTask.PEER.value, TestTask.MOLNET.value

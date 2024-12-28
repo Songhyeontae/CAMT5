@@ -11,6 +11,7 @@ class TestTask(Enum):
     DTI = "dti"
     PEER = "peer"
     MOLNET = "molnet"
+    MLM = "mlm"
 
 
 class TokenImportance(Enum):
@@ -50,7 +51,10 @@ class Loss(Enum):
 @dataclasses.dataclass
 class EvalConfig:
     task: TestTask
-    every_steps: int
+
+    # If this field is not None, the model will be evaluated during training
+    every_steps: Optional[int] = None
+
     max_target_len: Optional[int] = None
     total_steps: Optional[int] = None
     eval_results_path: Optional[str] = None
