@@ -1,6 +1,4 @@
-defaults:
-  - _self_
-  - train/exp: pt
+# @package task
 
 _target_: train.task.pretrain.App
 name: "train"
@@ -8,7 +6,7 @@ task_id: ${now:%Y-%m-%d_%H-%M-%S}
 
 train_config:
   _target_: train.config.TrainConfig
-  device: "cpu"
+  device: "gpu"
   seed: 42
   shot: 1
   do_compile: False
