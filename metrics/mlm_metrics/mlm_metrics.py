@@ -61,7 +61,7 @@ class MLMMetrics(evaluate.Metric):
                  references,
                  tsv_path="tmp.tsv",
                  verbose=False):
-        
+
         references = [references[i][0] for i in range(len(references))]
         # Accuracy
         correct = 0
@@ -69,6 +69,5 @@ class MLMMetrics(evaluate.Metric):
             if ref == pred:
                 correct += 1
         accuracy = correct / len(references)
-        
+
         return {"accuracy": accuracy}
-        
