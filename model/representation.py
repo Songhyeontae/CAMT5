@@ -1,7 +1,7 @@
 import logging
 import re
 from itertools import product
-from typing import Dict, List, NewType, Protocol
+from typing import Dict, List, NewType, Protocol, Tuple
 
 import selfies as sf
 from rdkit import Chem, RDLogger
@@ -152,7 +152,8 @@ class Frag(Representation):
         try:
             linear_smiles = ""
             for smiles in mol.split("."):
-                linear_smiles += linearize(smiles) + "[.]"
+                frag_str = linearize(smiles)[0]
+                linear_smiles += frag_str + "[.]"
             linear_smiles = linear_smiles[:-3]
         except:
             if verbose:
@@ -238,7 +239,7 @@ def nth_repl(s, sub, repl, n):
     return s
 
 
-def linearize(smile: SMILES) -> str:
+def linearize(smile: SMILES) -> Tuple[str, List[str]]:
     frag_dict = ["[.]"]
     chiral_order_list = []
     ref_chiral_order_list = []
@@ -303,7 +304,7 @@ def linearize(smile: SMILES) -> str:
         if frag_string not in frag_dict:
             frag_dict.append(frag_string)
 
-        return frag_string
+        return frag_string, frag_dict
 
     m2 = Chem.FragmentOnBonds(m, all_bonds)  # list of mols
     # TODO: (Ambiguity 발생 의심 부분) SMILES로 변환한 뒤 sort 후 Index만 이용해서 m2를 sort
@@ -448,13 +449,13 @@ def linearize(smile: SMILES) -> str:
 
     def dfs(graph, start, visited=None):
         if visited is None:
-            visited = set()
-        visited.add(start)
+            visited = []
+        visited.append(start)
 
         dfs_output.append(start)
-
-        for next in graph[start] - visited:
-            dfs(graph, next, visited)
+        for next_node in graph[start]:
+            if next_node not in visited:
+                dfs(graph, next_node, visited)
         return visited
 
     graph = {}
@@ -517,9 +518,7 @@ def linearize(smile: SMILES) -> str:
         tmp_matching.append([frag_idx1, index_in_frag1])
         tmp_matching.append([frag_idx2, index_in_frag2])
 
-    for ii in range(len(frag_indices)):
-        graph[str(ii)] = set(graph[str(ii)])
-
+    # list version
     dfs(graph, "0")
 
     frag_list = []
@@ -713,7 +712,7 @@ def linearize(smile: SMILES) -> str:
 
     frag_string = frag_string.replace("[<1*>O<0*>]", "[<0*>O<1*>]")
     frag_string = frag_string.replace("[<1*>N<0*>]", "[<0*>N<1*>]")
-    return frag_string
+    return frag_string, frag_dict
 
 
 def decode_linear(linear_smiles: str) -> SMILES:
