@@ -15,7 +15,6 @@ from model.representation import Frag, Representation
 
 load_dotenv()
 DATA_PATH = os.getenv("DATA_PATH")
-DUMMY_FRAG = "[C]"
 
 
 def _calculate_similarity(
