@@ -48,7 +48,7 @@ model_config:
   representation_type: smiles
   load_model:
     _target_: model.config.LoadModel
-    from_pretrained: false
+    from_pretrained: true
   tokenizer_config:
     _target_: model.config.TokenizerConfig
     additional_tokens_paths:

@@ -20,16 +20,16 @@ train_config:
   importance_weight_config:
     _target_: train.config.ImportanceWeightConfig
     temperature: 1
-    importance_weighted_loss: true
+    log_importance_weighted_loss: true
 
   eval_config:
     task: "mlm"
     total_steps: 100
-    tensorboard_path: .eval_results/pt_frag_micro_base_no_log_imp_weighted_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+    tensorboard_path: .eval_results/pt_frag_micro_base_camt5_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
 
   checkpoint:
     every_steps: 50000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_no_log_imp_weighted_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_camt5_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
@@ -42,11 +42,11 @@ model_config:
   representation_type: frag
   load_model:
     _target_: model.config.LoadModel
-    from_pretrained: false
+    from_pretrained: true
   tokenizer_config:
     _target_: model.config.TokenizerConfig
     additional_tokens_paths:
-      - "asset/mol_vocabs/frag_stereo.txt"
+      - "asset/mol_vocabs/frag_camt5.txt"
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:

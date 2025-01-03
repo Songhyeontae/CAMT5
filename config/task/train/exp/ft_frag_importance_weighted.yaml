@@ -63,4 +63,4 @@ data_config:
   token_importance_config:
     _target_: train.config.TokenImportanceConfig
     token_importance: atom_count
-    special_token_importance: 1
+    special_token_importance: 0
