@@ -443,6 +443,7 @@ def linearize(smile: SMILES) -> Tuple[str, List[str]]:
 
         permute_list.append(permute)
 
+        # 여기서 importance가 max인 index를 찾아서 그 index를 dfs의 start로 넣어주기 (index를 string으로 변환 후)
         smiles_list.append(frag_smile)
 
     dfs_output = []
