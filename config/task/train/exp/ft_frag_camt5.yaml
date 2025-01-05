@@ -51,6 +51,6 @@ data_config:
     max_seq_len: 512
     max_target_len: 512
     exec_file_path: .data/ni_dataset.py
-    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_stereo
+    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_camt5_stereo
     task_dir: ${oc.env:DATA_PATH}/tasks
     max_num_instances_per_task: 100000
