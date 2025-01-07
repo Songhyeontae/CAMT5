@@ -1,0 +1,56 @@
+# @package task
+
+train_config:
+  device: "gpu"
+  seed: 42
+  shot: 1
+  do_compile: False
+  batch_size: 48
+  grad_acc: 12
+  optim_config:
+    name: adamw
+    weight_decay: 0.0
+    base_lr: 2e-3
+    total_steps: 50000
+    grad_clip: 30.0
+    lr_scheduler_config:
+      name: cosine
+      warmup_steps: 1000
+
+  eval_config:
+    task: "text2mol"
+    every_steps: 5000
+    eval_results_path: .eval_results/ct_pt_text2mol_frag_micro_base_camt5_v2_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
+    tensorboard_path: .eval_results/ct_pt_text2mol_frag_micro_base_camt5_v2_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+
+  checkpoint:
+    every_steps: 10000
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ct_pt_text2mol_frag_micro_base_camt5_v2_${now:%m%d}_stereo
+
+  logging_config:
+    every_steps: 100
+    accuracy: true
+    grad_l2: true
+    weights_l2: true
+
+model_config:
+  name: "google/t5-v1_1-base"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_camt5_v2_T_1_2025-01-05_13-46-17_stereo/checkpoint-100000/pytorch_model.bin"
+  representation_type: frag
+  load_model:
+    from_pretrained: false
+  tokenizer_config:
+    additional_tokens_paths:
+      - "asset/mol_vocabs/frag_camt5_v2.txt"
+      - "asset/mol_vocabs/selfies.txt"
+
+data_config:
+  num_workers: 8
+
+  text_2_mol_data_config:
+    max_seq_len: 512
+    max_target_len: 512
+    exec_file_path: .data/ni_dataset.py
+    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_pubchem_stereo
+    task_dir: ${oc.env:DATA_PATH}/tasks
+    max_num_instances_per_task: 100000
