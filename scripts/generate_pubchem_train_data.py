@@ -17,10 +17,9 @@ DATA_PATH = os.getenv("DATA_PATH")
 
 if __name__ == "__main__":
     with open(
-            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_selfies_train_stereo2_final.json"
-    ) as f:
+            f"{DATA_PATH}/tasks/pub_chem_data_v2.json") as f:
         json_object = json.load(f)
-
+        
     my_json_object = {}
     my_json_object["Contributors"] = ["Seojin Kim"]
     my_json_object["Categories"] = ["Translation"]
@@ -79,13 +78,13 @@ if __name__ == "__main__":
         my_json_object["Instances"].append(tmp_dict)
 
     print(f"Fail count: {fail_count} over {len(json_object['Instances'])}")
-
+    
     with open(
-            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_frag_micro_train_stereo2_camt5.json",
+            f"{DATA_PATH}/tasks/task1_pubchem_text2mol_frag_micro_train_stereo2_camt5.json",
             "w") as f:
         json.dump(my_json_object, f)
 
-    with open(f"asset/mol_vocabs/frag_stereo_v2.txt", "w") as f:
+    with open(f"asset/mol_vocabs/frag_pubchem_v2.txt", "w") as f:
         for frag in frag_set:
             f.write(frag)
             f.write("\n")
