@@ -25,7 +25,7 @@ train_config:
   eval_config:
     task: "mlm"
     total_steps: 100
-    tensorboard_path: .eval_results/pt_frag_micro_base_camt5_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+    tensorboard_path: ${oc.env:EVALUATION_RESULT_PATH}/pt_frag_micro_base_camt5_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
 
   checkpoint:
     every_steps: 50000
