@@ -5,3 +5,4 @@ __pycache__
 .eval_results
 *.ipynb
 alindev
+tensorboard.sh
