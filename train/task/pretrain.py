@@ -11,8 +11,9 @@ from model.config import ModelConfig, RepresentationType
 from model.loader import ModelLoader
 from model.representation import Representation
 from train.config import DataConfig, TrainConfig
-from train.data import DataCollatorForT5MLM, MixedDataset
+from train.data import DataCollatorForUnimptT5, MixedDataset
 from train.train import Trainer, validate_config
+from utils import to_absolute_path
 
 
 class App(BaseTaskCls):
@@ -53,18 +54,21 @@ class App(BaseTaskCls):
     def get_dataloader(
             self, tokenizer: SpecialTokensMixin,
             representation: Representation) -> Tuple[DataLoader, DataLoader]:
-        mlm_data_config = self.data_config.mlm_data_config
+        pretrain_data_config = self.data_config.pretrain_data_config
+
         c4_dataset = self.get_text_dataset()
         mol_dataset = self.get_mol_dataset(representation)
+        text2mol_dataset = self.get_text2mol_dataset(
+            pretrain_data_config.t2m_data_dir, representation)
 
-        extended_input_length, target_length = data_utils.get_input_and_target_lengths(
-            input_length=mlm_data_config.input_length,
-            noise_density=mlm_data_config.mlm_probability,
-            mean_noise_span_length=mlm_data_config.mean_noise_span_length,
+        extended_input_length, mlm_target_length = data_utils.get_input_and_target_lengths(
+            input_length=pretrain_data_config.input_length,
+            noise_density=pretrain_data_config.mlm_probability,
+            mean_noise_span_length=pretrain_data_config.mean_noise_span_length,
         )
 
         # Set the max_target_len
-        self.train_config.eval_config.max_target_len = target_length
+        self.train_config.eval_config.max_target_len = pretrain_data_config.input_length
 
         text_mlm_dataset = data_utils.build_mlm_dataset(
             dataset=c4_dataset,
@@ -79,22 +83,32 @@ class App(BaseTaskCls):
             shuffle=True,
         )
 
-        data_collator = DataCollatorForT5MLM(
+        text2mol_dataset = data_utils.build_text2mol_dataset(
+            dataset=text2mol_dataset,
             tokenizer=tokenizer,
-            representation=representation,
-            noise_density=mlm_data_config.mlm_probability,
-            mean_noise_span_length=mlm_data_config.mean_noise_span_length,
-            input_length=mlm_data_config.input_length,
-            target_length=target_length,
-            token_importance_config=self.data_config.token_importance_config,
+            input_length=pretrain_data_config.input_length,
+            shuffle=True,
         )
 
         train_mixed_mlm_dataset = MixedDataset(text_mlm_dataset["train"],
-                                               mol_mlm_dataset["train"])
+                                               mol_mlm_dataset["train"],
+                                               text2mol_dataset["train"])
         test_mixed_mlm_dataset = MixedDataset(text_mlm_dataset["validation"],
-                                              mol_mlm_dataset["validation"])
+                                              mol_mlm_dataset["validation"],
+                                              text2mol_dataset["train"])
 
         batch_size = self.train_config.batch_size // self.train_config.grad_acc
+
+        data_collator = DataCollatorForUnimptT5(
+            tokenizer=tokenizer,
+            noise_density=pretrain_data_config.mlm_probability,
+            mean_noise_span_length=pretrain_data_config.mean_noise_span_length,
+            input_length=pretrain_data_config.input_length,
+            target_length=mlm_target_length,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+
+        batch_size = batch_size // 3
 
         train_dataloader = DataLoader(
             train_mixed_mlm_dataset,
@@ -149,6 +163,48 @@ class App(BaseTaskCls):
                 }, )
 
         return zinc_dataset
+
+    def get_text2mol_dataset(
+        self,
+        data_dir: str,
+        representation: Representation,
+    ) -> datasets.Dataset:
+        data_dir = to_absolute_path(data_dir)
+        dataset = datasets.load_dataset(
+            "csv",
+            data_files=[f"{data_dir}/pub_chem_data_v3.csv"],
+            delimiter="\t")
+
+        if self.model_config.representation_type == RepresentationType.SMILES.value:
+            dataset = dataset.map(
+                lambda example: {
+                    "desc": example["desc"],
+                    "seq": _molecule_process(example["smiles"]),
+                }, )
+
+        elif self.model_config.representation_type == RepresentationType.SELFIES.value:
+            dataset = dataset.map(
+                lambda example: {
+                    "desc": example["desc"],
+                    "seq": _molecule_process(example["selfies"]),
+                }, )
+
+        elif self.model_config.representation_type == RepresentationType.FRAG.value:
+            dataset = dataset.map(
+                lambda example: {
+                    "desc":
+                    example["desc"],
+                    "seq":
+                    _molecule_process(representation.encode(example["smiles"])
+                                      ),
+                }, )
+        else:
+            raise ValueError(
+                f"Invalid representation type: {self.model_config.representation_type}"
+            )
+        dataset.remove_columns(["smiles", "selfies"])
+
+        return dataset
 
 
 def _molecule_process(sequence: str) -> str:
