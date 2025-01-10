@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import evaluate
 import torch
+import wandb
 from accelerate import Accelerator
 from datasets.iterable_dataset import IterableDataset
 from torch.utils.data import DataLoader
@@ -57,10 +58,18 @@ class Trainer:
         if config.eval_config.tensorboard_path is not None:
             self.tensorboard_writer = SummaryWriter(
                 log_dir=to_absolute_path(config.eval_config.tensorboard_path))
+        if config.eval_config.wandb is not None:
+            wandb.init(
+                project=config.eval_config.wandb.project,
+                name=config.eval_config.wandb.run_name,
+            )
+            wandb.config.update(config)
 
     def __del__(self):
         if self.config.eval_config.tensorboard_path is not None:
             self.tensorboard_writer.close()
+        if self.config.eval_config.wandb is not None:
+            wandb.finish()
 
     def train(
         self,
@@ -200,6 +209,9 @@ class Trainer:
             if self.config.eval_config.tensorboard_path is not None:
                 self.tensorboard_writer.add_scalar(
                     f"{prefix}/{k}", v, self.current_state.train_step)
+            if self.config.eval_config.wandb is not None:
+                wandb.log({f"{prefix}/{k}": v},
+                          step=self.current_state.train_step)
 
         self._log_stats(eval_metric, prefix=prefix)
         if eval_config.eval_results_path is not None:
@@ -338,6 +350,9 @@ class Trainer:
             if self.config.eval_config.tensorboard_path is not None:
                 self.tensorboard_writer.add_scalar(
                     f"train/{k}", v, self.current_state.train_step)
+            if self.config.eval_config.wandb is not None:
+                wandb.log({f"train/{k}": v},
+                          step=self.current_state.train_step)
 
         self._log_stats(averaged_metrics, prefix='train')
         self.current_state.last_log = time.time()
