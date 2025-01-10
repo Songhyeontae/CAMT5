@@ -1,7 +1,7 @@
 import dataclasses
 from dataclasses import field
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 
 class TestTask(Enum):
@@ -49,6 +49,12 @@ class Loss(Enum):
 
 
 @dataclasses.dataclass
+class Wandb:
+    project: str
+    run_name: str
+
+
+@dataclasses.dataclass
 class EvalConfig:
     task: TestTask
 
@@ -59,6 +65,7 @@ class EvalConfig:
     total_steps: Optional[int] = None
     eval_results_path: Optional[str] = None
     tensorboard_path: Optional[str] = None
+    wandb: Optional[Wandb] = None
 
 
 @dataclasses.dataclass
