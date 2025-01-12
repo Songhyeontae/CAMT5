@@ -32,6 +32,10 @@ from utils import to_absolute_path
 Output = Union[Seq2SeqLMOutput, CausalLMOutputWithPast]
 logger = logging.getLogger(__name__)
 
+from datetime import timedelta
+
+from accelerate import InitProcessGroupKwargs
+
 
 @dataclasses.dataclass
 class CurrentState:
@@ -80,8 +84,10 @@ class Trainer:
         test_dataloader: DataLoader,
         eval_dataloader: DataLoader = None,
     ):
-        accelerator = Accelerator(
-            cpu=(self.config.device == Device.CPU.value), )
+        ipg_handler = InitProcessGroupKwargs(timeout=timedelta(seconds=5400))
+        accelerator = Accelerator(kwargs_handlers=[ipg_handler],
+                                  cpu=(self.config.device == Device.CPU.value),
+                                  step_scheduler_with_optimizer=False)
 
         logging.info(f"Using {accelerator.device}")
 
@@ -292,11 +298,11 @@ class Trainer:
                     # reset gradients
                     optimizer.zero_grad(set_to_none=True)
 
-                    # log metrics, hyperparameters
-                    self._maybe_log_metrics()
-
                     # evaluate and save checkpoint
                     if accelerator.is_main_process:
+                        # log metrics, hyperparameters
+                        self._maybe_log_metrics()
+
                         if self.config.eval_config.every_steps != None and validation_dataloader != None:
                             self._maybe_validate(
                                 dataloader=validation_dataloader,
