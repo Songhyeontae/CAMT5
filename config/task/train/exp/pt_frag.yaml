@@ -41,7 +41,7 @@ model_config:
   tokenizer_config:
     _target_: model.config.TokenizerConfig
     additional_tokens_paths:
-      - "asset/mol_vocabs/frag_camt5.txt"
+      - "asset/mol_vocabs/frag_camt5_v3.txt"
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
