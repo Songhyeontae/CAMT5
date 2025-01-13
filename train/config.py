@@ -130,6 +130,15 @@ class ImportanceWeightConfig:
 
 
 @dataclasses.dataclass
+class ResumeTrainingConfig:
+    last_step: int
+    # If this field is set,
+    # the optimizer, random state, lr scheduler will be overridden.
+    # NOTE: MUST BE THE SAME AS THE ORIGINAL OPTIMIZER, LR SCHEDULER
+    checkpoint_dir: str
+
+
+@dataclasses.dataclass
 class TrainConfig:
     device: Device
     seed: int
@@ -146,6 +155,9 @@ class TrainConfig:
     eval_config: Optional[EvalConfig] = field(default_factory=EvalConfig)
     test_bsz_multi: Optional[int] = 1
     do_compile: Optional[bool] = False
+
+    # resume training
+    resume_training_config: Optional[ResumeTrainingConfig] = None
 
 
 @dataclasses.dataclass

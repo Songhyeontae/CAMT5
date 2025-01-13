@@ -2,11 +2,13 @@ import dataclasses
 import logging
 import math
 import os
+import random
 import time
 from itertools import islice
 from typing import Dict, List, Optional, Tuple, Union
 
 import evaluate
+import numpy as np
 import torch
 import wandb
 from accelerate import Accelerator
@@ -21,8 +23,8 @@ from transformers.modeling_outputs import (CausalLMOutputWithPast,
 from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
 from model.representation import Representation, Selfies, get_importance
-from train.config import (Device, ImportanceWeightConfig, TemperatureDecay,
-                          TestTask, TrainConfig)
+from train.config import (Device, ImportanceWeightConfig, ResumeTrainingConfig,
+                          TemperatureDecay, TestTask, TrainConfig)
 from train.loss import get_loss
 from train.optimizer import get_optimizer
 from train.scheduler import get_lr_scheduler
@@ -99,19 +101,28 @@ class Trainer:
                                         optim_config.base_lr,
                                         lr_scheduler_config)
 
+        self.current_state = CurrentState(
+            train_step=1,
+            train_epoch=1,
+            last_log=time.time(),
+        )
+
+        if self.config.resume_training_config is not None:
+            logger.info("Resuming training...")
+            optimizer, lr_scheduler, self.current_state = \
+                self._resume_training(
+                    optimizer=optimizer,
+                    lr_scheduler=lr_scheduler,
+                    current_state=self.current_state,
+                    config=self.config.resume_training_config
+                )
+
         # Prepare distributed training, mixed precision, etc.
         model, optimizer, lr_scheduler, train_dataloader = accelerator.prepare(
             model, optimizer, lr_scheduler, train_dataloader)
 
         if self.config.do_compile:
             torch.compile(model)
-
-        # Set the initial state of the training
-        self.current_state = CurrentState(
-            train_step=1,
-            train_epoch=1,
-            last_log=time.time(),
-        )
 
         self._train(
             model=model,
@@ -225,6 +236,33 @@ class Trainer:
 
         # Set Model to train mode
         model.train()
+
+    def _resume_training(
+        self,
+        optimizer: torch.optim.Optimizer,
+        lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
+        current_state: CurrentState,
+        config: ResumeTrainingConfig,
+    ) -> Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler,
+               CurrentState]:
+
+        checkpoint_dir = to_absolute_path(config.checkpoint_dir)
+        optimizer_path = os.path.join(checkpoint_dir, "optimizer.bin")
+        lr_scheduler_path = os.path.join(checkpoint_dir, "scheduler.bin")
+        random_state_path = os.path.join(checkpoint_dir, "random_states_0.pkl")
+
+        optimizer.load_state_dict(torch.load(optimizer_path))
+        lr_scheduler.load_state_dict(torch.load(lr_scheduler_path))
+        random_states = torch.load(random_state_path)
+
+        random.setstate(random_states["random_state"])
+        np.random.set_state(random_states["numpy_random_seed"])
+        torch.set_rng_state(random_states["torch_manual_seed"])
+        torch.cuda.set_rng_state_all(random_states["torch_cuda_manual_seed"])
+
+        current_state.train_step = config.last_step + 1
+
+        return optimizer, lr_scheduler, current_state
 
     def _train(
         self,
