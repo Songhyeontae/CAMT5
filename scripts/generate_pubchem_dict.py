@@ -14,11 +14,13 @@ load_dotenv()
 DATA_PATH = os.getenv("DATA_PATH")
 
 if __name__ == "__main__":
-    df = pd.read_csv(f"{DATA_PATH}/tasks/pub_chem_data_v3.csv", sep="\t", usecols=["smiles"])
+    df = pd.read_csv(f"{DATA_PATH}/tasks/pub_chem_data_v3.csv",
+                     sep="\t",
+                     usecols=["smiles"])
     fail_count = 0
     frag_set = set(["[.]"])
     frag = Frag()
-    
+
     for smiles in tqdm(df["smiles"], total=len(df)):
         raw_smiles = smiles
 
