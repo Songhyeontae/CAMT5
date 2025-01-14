@@ -107,19 +107,20 @@ class Trainer:
             last_log=time.time(),
         )
 
+        # Prepare distributed training, mixed precision, etc.
+        model, optimizer, lr_scheduler, train_dataloader = accelerator.prepare(
+            model, optimizer, lr_scheduler, train_dataloader)
+
         if self.config.resume_training_config is not None:
             logger.info("Resuming training...")
             optimizer, lr_scheduler, self.current_state = \
                 self._resume_training(
+                    accelerator=accelerator,
                     optimizer=optimizer,
                     lr_scheduler=lr_scheduler,
                     current_state=self.current_state,
                     config=self.config.resume_training_config
                 )
-
-        # Prepare distributed training, mixed precision, etc.
-        model, optimizer, lr_scheduler, train_dataloader = accelerator.prepare(
-            model, optimizer, lr_scheduler, train_dataloader)
 
         if self.config.do_compile:
             torch.compile(model)
@@ -239,6 +240,7 @@ class Trainer:
 
     def _resume_training(
         self,
+        accelerator: Accelerator,
         optimizer: torch.optim.Optimizer,
         lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         current_state: CurrentState,
@@ -247,21 +249,8 @@ class Trainer:
                CurrentState]:
 
         checkpoint_dir = to_absolute_path(config.checkpoint_dir)
-        optimizer_path = os.path.join(checkpoint_dir, "optimizer.bin")
-        lr_scheduler_path = os.path.join(checkpoint_dir, "scheduler.bin")
-        random_state_path = os.path.join(checkpoint_dir, "random_states_0.pkl")
-
-        optimizer.load_state_dict(torch.load(optimizer_path))
-        lr_scheduler.load_state_dict(torch.load(lr_scheduler_path))
-        random_states = torch.load(random_state_path)
-
-        random.setstate(random_states["random_state"])
-        np.random.set_state(random_states["numpy_random_seed"])
-        torch.set_rng_state(random_states["torch_manual_seed"])
-        torch.cuda.set_rng_state_all(random_states["torch_cuda_manual_seed"])
-
+        accelerator.load_state(checkpoint_dir)
         current_state.train_step = config.last_step + 1
-
         return optimizer, lr_scheduler, current_state
 
     def _train(
@@ -340,7 +329,6 @@ class Trainer:
                     if accelerator.is_main_process:
                         # log metrics, hyperparameters
                         self._maybe_log_metrics()
-
                         if self.config.eval_config.every_steps != None and validation_dataloader != None:
                             self._maybe_validate(
                                 dataloader=validation_dataloader,
