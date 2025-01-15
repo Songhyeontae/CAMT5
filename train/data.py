@@ -52,8 +52,6 @@ class DataCollatorForUnimptT5:
     text_data_ratio: float
     mol_data_ratio: float
     t2m_data_ratio: float
-    t2m_token_importance: bool
-    mlm_token_importance: bool
     token_importance_config: TokenImportanceConfig = None
 
     def __call__(
@@ -100,7 +98,7 @@ class DataCollatorForUnimptT5:
                                                     labels_sentinel)
 
         # MLM Token importance
-        if self.token_importance_config is not None and self.mlm_token_importance:
+        if self.token_importance_config is not None:
             mlm_token_importances = self.get_mlm_token_importance(
                 text_length,
                 expanded_input_length=expanded_input_length,
@@ -119,11 +117,10 @@ class DataCollatorForUnimptT5:
                 f"`labels` are incorrectly preprocessed. `labels` length is {batch_mlm['labels'].shape[-1]}, but should be"
                 f" {self.target_length}.")
 
-        if (self.token_importance_config is not None
-                and self.t2m_token_importance
-            ) and batch["token_importances"].shape[-1] != self.target_length:
+        if self.token_importance_config is not None and batch_mlm[
+                "token_importances"].shape[-1] != self.target_length:
             raise ValueError(
-                f"`token_importances` are incorrectly preprocessed. `token_importances` length is {batch['token_importances'].shape[-1]}, but should be"
+                f"`token_importances` are incorrectly preprocessed. `token_importances` length is {batch_mlm['token_importances'].shape[-1]}, but should be"
                 f" {self.target_length}.")
 
         # 2. Process text_2_mol_samples
@@ -138,10 +135,8 @@ class DataCollatorForUnimptT5:
             "labels": np.array(text_to_mol_labels),
         })
 
-        batch_t2m['labels'][batch_t2m['labels'] == self.pad_token_id] = -100
-
         # T2M Token importance
-        if self.token_importance_config is not None and self.t2m_token_importance:
+        if self.token_importance_config is not None:
             tokenized_labels = [
                 self.tokenizer.convert_ids_to_tokens(label)
                 for label in batch_t2m["labels"]
@@ -152,8 +147,12 @@ class DataCollatorForUnimptT5:
                 tokenizer=self.tokenizer,
                 representation=self.representation,
             )
-            token_importances = torch.Tensor(token_importances)
-            batch_t2m["token_importances"] = token_importances
+            token_importances = np.array(token_importances)
+            batch_t2m["token_importances"] = np.where(
+                batch_t2m["labels"] != self.pad_token_id, token_importances,
+                IMPORTANCE_PAD_VALUE)
+
+        batch_t2m['labels'][batch_t2m['labels'] == self.pad_token_id] = -100
 
         # 3. Match MLM and Text2Mol sequence lengths
         batch_mlm['labels'] = np.concatenate(
@@ -162,25 +161,20 @@ class DataCollatorForUnimptT5:
                      -100)),
             axis=1)
 
-        batch_mlm["token_importances"] = np.concatenate(
-            (batch_mlm["token_importances"],
-             np.full((mlm_batch_size, self.input_length - self.target_length),
+        if self.token_importance_config is not None:
+            batch_mlm["token_importances"] = np.concatenate(
+                (batch_mlm["token_importances"],
+                 np.full(
+                     (mlm_batch_size, self.input_length - self.target_length),
                      IMPORTANCE_PAD_VALUE)),
-            axis=1)
+                axis=1)
 
         batch = {
-            "input_ids":
-            np.concatenate((batch_t2m["input_ids"], batch_mlm["input_ids"]),
-                           axis=0),
-            "labels":
-            np.concatenate((batch_t2m["labels"], batch_mlm["labels"]), axis=0),
-            "token_importances":
-            np.concatenate((batch_t2m["token_importances"],
-                            batch_mlm["token_importances"]),
-                           axis=0),
+            k: torch.from_numpy(
+                np.concatenate((batch_t2m[k], batch_mlm[k]), axis=0))
+            for k in batch_t2m.keys()
         }
 
-        batch = {k: torch.from_numpy(v) for k, v in batch.items()}
         return batch
 
     def create_sentinel_ids(self, mask_indices):
@@ -783,8 +777,8 @@ def _t2m_tokenize_function(
         max_length=max_length,
     )
 
-    input_ids = tokenizer_seq_out["input_ids"]
-    label_ids = tokenizer_desc_out["input_ids"]
+    input_ids = tokenizer_desc_out["input_ids"]
+    label_ids = tokenizer_seq_out["input_ids"]
 
     result = {"input_ids": input_ids, "labels": label_ids}
 

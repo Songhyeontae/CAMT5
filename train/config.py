@@ -194,10 +194,6 @@ class ContinualPretrainDataConfig:
     mlm_probability: float
     mean_noise_span_length: int
 
-    # token importance
-    t2m_token_importance: Optional[bool] = False
-    mlm_token_importance: Optional[bool] = False
-
 
 @dataclasses.dataclass
 class DataConfig:

@@ -115,9 +115,7 @@ class App(BaseTaskCls):
             text_data_ratio=text_data_ratio,
             mol_data_ratio=mol_data_ratio,
             t2m_data_ratio=t2m_data_ratio,
-            t2m_token_importance=pretrain_data_config.t2m_token_importance,
-            mlm_token_importance=pretrain_data_config.mlm_token_importance,
-            token_importance_config=self.train_config.importance_weight_config,
+            token_importance_config=self.data_config.token_importance_config,
         )
 
         train_dataloader = DataLoader(
