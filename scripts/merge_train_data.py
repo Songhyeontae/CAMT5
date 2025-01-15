@@ -1,12 +1,12 @@
 import os
 import sys
 
+import pandas as pd
 import selfies as sf
 from dotenv import load_dotenv
 from rdkit import Chem
 from rdkit.Chem import rdmolops
 from tqdm import tqdm
-import pandas as pd
 
 sys.path.append(os.getcwd())
 import json
@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
     # PubChem
     pubchem = pd.read_csv(f"{DATA_PATH}/tasks/pub_chem_data_v3.csv", sep="\t")
-    
+
     for row in tqdm(pubchem.itertuples(index=True), total=len(pubchem)):
         tmp_dict = {}
         tmp_dict["id"] = f"pubchem_v3_{row.Index}"
@@ -106,17 +106,14 @@ if __name__ == "__main__":
                 f"Reconstructed SMILES {result_smiles} is not the same as the original SMILES {raw_smiles}"
             )
             fail_count += 1
-    
-    print(f"Fail count: {fail_count} over {len(json_object['Instances']) + len(pubchem)}")
+
+        my_json_object["Instances"].append(tmp_dict)
+
+    print(
+        f"Fail count: {fail_count} over {len(json_object['Instances']) + len(pubchem)}"
+    )
 
     with open(
             f"{DATA_PATH}/tasks/task1_chebi_w_pubchem_v3_text2mol_frag_micro_train_stereo2_camt5.json",
             "w") as f:
         json.dump(my_json_object, f)
-
-    with open(f"asset/mol_vocabs/frag_camt5_test.txt", "w") as f:
-        frag_set = list(frag_set)
-        frag_set.sort()
-        for frag in frag_set:
-            f.write(frag)
-            f.write("\n")
