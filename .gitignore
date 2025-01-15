@@ -9,4 +9,4 @@ tensorboard.sh
 .caslurm-logs
 .slurm-gpu-logs
 .slurm-logs
-slurm_scripts
+.slurm_scripts
