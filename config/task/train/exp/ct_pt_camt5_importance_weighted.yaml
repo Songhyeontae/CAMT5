@@ -32,7 +32,7 @@ train_config:
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ct_pt_text2mol_frag_micro_base_T_5_camt5_v3_${now:%m%d}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ct_pt_text2mol_frag_micro_base_T_5_camt5_v3_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
