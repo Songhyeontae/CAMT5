@@ -43,6 +43,7 @@ class DataCollatorForUnimptT5:
     """
 
     tokenizer: AutoTokenizer
+    representation: Representation
     noise_density: float
     mean_noise_span_length: float
     input_length: int
@@ -51,6 +52,9 @@ class DataCollatorForUnimptT5:
     text_data_ratio: float
     mol_data_ratio: float
     t2m_data_ratio: float
+    t2m_token_importance: bool
+    mlm_token_importance: bool
+    token_importance_config: TokenImportanceConfig = None
 
     def __call__(
             self, examples: List[Tuple[Dict[str,
@@ -63,28 +67,24 @@ class DataCollatorForUnimptT5:
 
         text_length = max(int(self.text_data_ratio * total_example_count), 1)
         mol_length = max(int(self.mol_data_ratio * total_example_count), 1)
-        text_2_mol_length = total_example_count - text_length - mol_length
 
-        text_samples = [ex["input_ids"] for ex in text_examples[:text_length]]
-        mol_samples = [ex["input_ids"] for ex in mol_examples[:mol_length]]
+        text_examples = text_examples[:text_length]
+        mol_examples = mol_examples[:mol_length]
+
+        text_samples = [ex["input_ids"] for ex in text_examples]
+        mol_samples = [ex["input_ids"] for ex in mol_examples]
 
         mlm_samples = text_samples + mol_samples
-        text_to_mol_ids = [
-            ex["input_ids"] for ex in text_2_mol_examples[:text_2_mol_length]
-        ]
-        text_to_mol_labels = [
-            ex["labels"] for ex in text_2_mol_examples[:text_2_mol_length]
-        ]
 
-        # Process mlm_samples
+        # 1. Process mlm_samples
         batch_mlm = BatchEncoding({"input_ids": np.array(mlm_samples)
                                    }) if mlm_samples else {}
 
         mlm_input_ids = batch_mlm["input_ids"]
-        mlm_batch_size, expandend_input_length = mlm_input_ids.shape
+        mlm_batch_size, expanded_input_length = mlm_input_ids.shape
 
         mlm_mask_indices = np.asarray([
-            self.random_spans_noise_mask(expandend_input_length)
+            self.random_spans_noise_mask(expanded_input_length)
             for i in range(mlm_batch_size)
         ])
         mlm_labels_mask = ~mlm_mask_indices
@@ -99,6 +99,16 @@ class DataCollatorForUnimptT5:
         batch_mlm["labels"] = self.filter_input_ids(mlm_input_ids,
                                                     labels_sentinel)
 
+        # MLM Token importance
+        if self.token_importance_config is not None and self.mlm_token_importance:
+            mlm_token_importances = self.get_mlm_token_importance(
+                text_length,
+                expanded_input_length=expanded_input_length,
+                mol_examples=mol_examples,
+            )
+            batch_mlm["token_importances"] = self.filter_mlm_token_importances(
+                mlm_token_importances, labels_sentinel)
+
         if batch_mlm["input_ids"].shape[-1] != self.input_length:
             raise ValueError(
                 f"`input_ids` are incorrectly preprocessed. `input_ids` length is {batch_mlm['input_ids'].shape[-1]}, but"
@@ -109,6 +119,20 @@ class DataCollatorForUnimptT5:
                 f"`labels` are incorrectly preprocessed. `labels` length is {batch_mlm['labels'].shape[-1]}, but should be"
                 f" {self.target_length}.")
 
+        if (self.token_importance_config is not None
+                and self.t2m_token_importance
+            ) and batch["token_importances"].shape[-1] != self.target_length:
+            raise ValueError(
+                f"`token_importances` are incorrectly preprocessed. `token_importances` length is {batch['token_importances'].shape[-1]}, but should be"
+                f" {self.target_length}.")
+
+        # 2. Process text_2_mol_samples
+        text_2_mol_length = total_example_count - text_length - mol_length
+        text_2_mol_examples = text_2_mol_examples[:text_2_mol_length]
+
+        text_to_mol_ids = [ex["input_ids"] for ex in text_2_mol_examples]
+        text_to_mol_labels = [ex["labels"] for ex in text_2_mol_examples]
+
         batch_t2m = BatchEncoding({
             "input_ids": np.array(text_to_mol_ids),
             "labels": np.array(text_to_mol_labels),
@@ -116,12 +140,32 @@ class DataCollatorForUnimptT5:
 
         batch_t2m['labels'][batch_t2m['labels'] == self.pad_token_id] = -100
 
-        # pad batch['labels'] to the same the batch['input_ids']
+        # T2M Token importance
+        if self.token_importance_config is not None and self.t2m_token_importance:
+            tokenized_labels = [
+                self.tokenizer.convert_ids_to_tokens(label)
+                for label in batch_t2m["labels"]
+            ]
+            token_importances = get_token_importance(
+                config=self.token_importance_config,
+                tokenized_labels=tokenized_labels,
+                tokenizer=self.tokenizer,
+                representation=self.representation,
+            )
+            token_importances = torch.Tensor(token_importances)
+            batch_t2m["token_importances"] = token_importances
+
+        # 3. Match MLM and Text2Mol sequence lengths
         batch_mlm['labels'] = np.concatenate(
             (batch_mlm['labels'],
-             np.full(
-                 (mlm_batch_size, self.input_length - self.target_length),
-                 -100)),
+             np.full((mlm_batch_size, self.input_length - self.target_length),
+                     -100)),
+            axis=1)
+
+        batch_mlm["token_importances"] = np.concatenate(
+            (batch_mlm["token_importances"],
+             np.full((mlm_batch_size, self.input_length - self.target_length),
+                     IMPORTANCE_PAD_VALUE)),
             axis=1)
 
         batch = {
@@ -130,6 +174,10 @@ class DataCollatorForUnimptT5:
                            axis=0),
             "labels":
             np.concatenate((batch_t2m["labels"], batch_mlm["labels"]), axis=0),
+            "token_importances":
+            np.concatenate((batch_t2m["token_importances"],
+                            batch_mlm["token_importances"]),
+                           axis=0),
         }
 
         batch = {k: torch.from_numpy(v) for k, v in batch.items()}
@@ -148,10 +196,6 @@ class DataCollatorForUnimptT5:
         sentinel_ids = np.where(start_indices != 0,
                                 np.cumsum(start_indices, axis=-1),
                                 start_indices)
-        # sentinel_ids = np.where(
-        #     sentinel_ids != 0, (len(self.tokenizer) - sentinel_ids), 0
-        # )
-        # For additional molecule and protein tokens
         sentinel_ids = np.where(sentinel_ids != 0,
                                 (self.tokenizer.vocab_size - sentinel_ids), 0)
         sentinel_ids -= mask_indices - start_indices
@@ -247,6 +291,57 @@ class DataCollatorForUnimptT5:
         is_noise = np.equal(span_num % 2, 1)
 
         return is_noise[:orig_length]
+
+    def get_mlm_token_importance(
+        self,
+        text_length: int,
+        expanded_input_length: int,
+        mol_examples: List[Dict[str, Any]],
+    ) -> torch.Tensor:
+
+        text_token_importances = torch.ones(
+            (text_length, expanded_input_length))
+
+        mol_tokens = [
+            self.tokenizer.convert_ids_to_tokens(example["input_ids"])
+            for example in mol_examples
+        ]
+        mol_token_importances = get_token_importance(
+            config=self.token_importance_config,
+            tokenized_labels=mol_tokens,
+            tokenizer=self.tokenizer,
+            representation=self.representation,
+        )
+        mol_token_importances = torch.Tensor(mol_token_importances)
+        token_importances = torch.cat(
+            [text_token_importances, mol_token_importances], dim=0)
+
+        return token_importances
+
+    def filter_mlm_token_importances(self, token_importances, sentinel_ids):
+        """
+        Puts sentinel mask on `token_importances` and fuse consecutive mask tokens importances into a 1 by deleting.
+        This will reduce the sequence length from `expanded_inputs_length` to `input_length`.
+        """
+        batch_size = token_importances.shape[0]
+        mask_importance = self.token_importance_config.special_token_importance
+        token_importances_full = np.where(sentinel_ids != 0, sentinel_ids,
+                                          token_importances)
+        token_importances_full = np.where(sentinel_ids > 0, mask_importance,
+                                          token_importances_full)
+
+        # token_importances tokens and sentinel tokens are >= 0, tokens < 0 are
+        # masked tokens coming after sentinel tokens and should be removed
+        token_importances = token_importances_full[
+            token_importances_full >= 0].reshape((batch_size, -1))
+        token_importances = np.concatenate(
+            [
+                token_importances,
+                np.full((batch_size, 1), mask_importance, dtype=np.float32),
+            ],
+            axis=-1,
+        )
+        return token_importances
 
 
 @dataclass

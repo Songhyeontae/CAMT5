@@ -106,6 +106,7 @@ class App(BaseTaskCls):
 
         data_collator = DataCollatorForUnimptT5(
             tokenizer=tokenizer,
+            representation=representation,
             noise_density=pretrain_data_config.mlm_probability,
             mean_noise_span_length=pretrain_data_config.mean_noise_span_length,
             input_length=pretrain_data_config.input_length,
@@ -114,6 +115,9 @@ class App(BaseTaskCls):
             text_data_ratio=text_data_ratio,
             mol_data_ratio=mol_data_ratio,
             t2m_data_ratio=t2m_data_ratio,
+            t2m_token_importance=pretrain_data_config.t2m_token_importance,
+            mlm_token_importance=pretrain_data_config.mlm_token_importance,
+            token_importance_config=self.train_config.importance_weight_config,
         )
 
         train_dataloader = DataLoader(
