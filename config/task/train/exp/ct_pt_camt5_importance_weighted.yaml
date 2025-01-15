@@ -10,7 +10,7 @@ train_config:
   optim_config:
     name: adamw
     weight_decay: 0.0
-    base_lr: 2e-3
+    base_lr: 1e-3
     total_steps: 50000
     grad_clip: 30.0
     lr_scheduler_config:
