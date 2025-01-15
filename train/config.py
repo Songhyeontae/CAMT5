@@ -179,10 +179,27 @@ class MLMDataConfig:
     input_length: int
 
 
+# Config for MLM Task. Use C4, zinc dataset.
+@dataclasses.dataclass
+class ContinualPretrainDataConfig:
+    t2m_data_ratio: float
+
+    # both for MLM and T2M
+    input_length: int
+
+    # for T2M
+    t2m_data_path: str
+
+    # for MLM
+    mlm_probability: float
+    mean_noise_span_length: int
+
+
 @dataclasses.dataclass
 class DataConfig:
     num_workers: int
-
     text_2_mol_data_config: Optional[Text2MolDataConfig] = None
     mlm_data_config: Optional[MLMDataConfig] = None
+    continual_pretrain_data_config: Optional[
+        ContinualPretrainDataConfig] = None
     token_importance_config: Optional[TokenImportanceConfig] = None

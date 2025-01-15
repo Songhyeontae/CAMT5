@@ -4,8 +4,8 @@ from typing import Iterator, List
 
 import numpy as np
 import torch
-from datasets import IterableDataset
-from transformers import BatchEncoding, PreTrainedTokenizer
+from datasets import Dataset, IterableDataset
+from transformers import AutoTokenizer, BatchEncoding, PreTrainedTokenizer
 from transformers.data.data_collator import *
 
 from model.representation import Representation
@@ -14,6 +14,328 @@ from train.token_importance import get_token_importance
 
 IMPORTANCE_PAD_VALUE = -1.0
 SHUFFLE_BUFFER_SIZE = 10000
+
+
+@dataclass
+class DataCollatorForUnimptT5:
+    """
+    [Copied from https://github.com/huggingface/transformers/blob/main/examples/flax/language-modeling/run_t5_mlm_flax.py]
+    Data collator used for T5 span-masked language modeling.
+    It is made sure that after masking the inputs are of length `data_args.max_seq_length` and targets are also of fixed length.
+    For more information on how T5 span-masked language modeling works, one can take a look
+    at the `official paper <https://arxiv.org/pdf/1910.10683.pdf>`__
+    or the `official code for preprocessing <https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/preprocessors.py>`__ .
+    Args:
+        tokenizer (:class:`~transformers.PreTrainedTokenizer` or :class:`~transformers.PreTrainedTokenizerFast`):
+            The tokenizer used for encoding the data.
+        noise_density (:obj:`float`):
+            The probability with which to (randomly) mask tokens in the input.
+        mean_noise_span_length (:obj:`float`):
+            The average span length of the masked tokens.
+        input_length (:obj:`int`):
+            The expected input length after masking.
+        target_length (:obj:`int`):
+            The expected target length after masking.
+        pad_token_id: (:obj:`int`):
+            The pad token id of the model
+        decoder_start_token_id: (:obj:`int):
+            The decoder start token id of the model
+    """
+
+    tokenizer: AutoTokenizer
+    representation: Representation
+    noise_density: float
+    mean_noise_span_length: float
+    input_length: int
+    target_length: int
+    pad_token_id: int
+    text_data_ratio: float
+    mol_data_ratio: float
+    t2m_data_ratio: float
+    token_importance_config: TokenImportanceConfig = None
+
+    def __call__(
+            self, examples: List[Tuple[Dict[str,
+                                            np.ndarray]]]) -> BatchEncoding:
+
+        assert self.text_data_ratio + self.mol_data_ratio + self.t2m_data_ratio == 1.0, "Ratios should sum to 1.0"
+        total_example_count = len(examples)
+
+        text_examples, mol_examples, text_2_mol_examples = zip(*examples)
+
+        text_length = max(int(self.text_data_ratio * total_example_count), 1)
+        mol_length = max(int(self.mol_data_ratio * total_example_count), 1)
+
+        text_examples = text_examples[:text_length]
+        mol_examples = mol_examples[:mol_length]
+
+        text_samples = [ex["input_ids"] for ex in text_examples]
+        mol_samples = [ex["input_ids"] for ex in mol_examples]
+
+        mlm_samples = text_samples + mol_samples
+
+        # 1. Process mlm_samples
+        batch_mlm = BatchEncoding({"input_ids": np.array(mlm_samples)
+                                   }) if mlm_samples else {}
+
+        mlm_input_ids = batch_mlm["input_ids"]
+        mlm_batch_size, expanded_input_length = mlm_input_ids.shape
+
+        mlm_mask_indices = np.asarray([
+            self.random_spans_noise_mask(expanded_input_length)
+            for i in range(mlm_batch_size)
+        ])
+        mlm_labels_mask = ~mlm_mask_indices
+
+        input_ids_sentinel = self.create_sentinel_ids(
+            mlm_mask_indices.astype(np.int8))
+        labels_sentinel = self.create_sentinel_ids(
+            mlm_labels_mask.astype(np.int8))
+
+        batch_mlm["input_ids"] = self.filter_input_ids(mlm_input_ids,
+                                                       input_ids_sentinel)
+        batch_mlm["labels"] = self.filter_input_ids(mlm_input_ids,
+                                                    labels_sentinel)
+
+        # MLM Token importance
+        if self.token_importance_config is not None:
+            mlm_token_importances = self.get_mlm_token_importance(
+                text_length,
+                expanded_input_length=expanded_input_length,
+                mol_examples=mol_examples,
+            )
+            batch_mlm["token_importances"] = self.filter_mlm_token_importances(
+                mlm_token_importances, labels_sentinel)
+
+        if batch_mlm["input_ids"].shape[-1] != self.input_length:
+            raise ValueError(
+                f"`input_ids` are incorrectly preprocessed. `input_ids` length is {batch_mlm['input_ids'].shape[-1]}, but"
+                f" should be {self.input_length}.")
+
+        if batch_mlm["labels"].shape[-1] != self.target_length:
+            raise ValueError(
+                f"`labels` are incorrectly preprocessed. `labels` length is {batch_mlm['labels'].shape[-1]}, but should be"
+                f" {self.target_length}.")
+
+        if self.token_importance_config is not None and batch_mlm[
+                "token_importances"].shape[-1] != self.target_length:
+            raise ValueError(
+                f"`token_importances` are incorrectly preprocessed. `token_importances` length is {batch_mlm['token_importances'].shape[-1]}, but should be"
+                f" {self.target_length}.")
+
+        # 2. Process text_2_mol_samples
+        text_2_mol_length = total_example_count - text_length - mol_length
+        text_2_mol_examples = text_2_mol_examples[:text_2_mol_length]
+
+        text_to_mol_ids = [ex["input_ids"] for ex in text_2_mol_examples]
+        text_to_mol_labels = [ex["labels"] for ex in text_2_mol_examples]
+
+        batch_t2m = BatchEncoding({
+            "input_ids": np.array(text_to_mol_ids),
+            "labels": np.array(text_to_mol_labels),
+        })
+
+        # T2M Token importance
+        if self.token_importance_config is not None:
+            tokenized_labels = [
+                self.tokenizer.convert_ids_to_tokens(label)
+                for label in batch_t2m["labels"]
+            ]
+            token_importances = get_token_importance(
+                config=self.token_importance_config,
+                tokenized_labels=tokenized_labels,
+                tokenizer=self.tokenizer,
+                representation=self.representation,
+            )
+            token_importances = np.array(token_importances)
+            batch_t2m["token_importances"] = np.where(
+                batch_t2m["labels"] != self.pad_token_id, token_importances,
+                IMPORTANCE_PAD_VALUE)
+
+        batch_t2m['labels'][batch_t2m['labels'] == self.pad_token_id] = -100
+
+        # 3. Match MLM and Text2Mol sequence lengths
+        batch_mlm['labels'] = np.concatenate(
+            (batch_mlm['labels'],
+             np.full((mlm_batch_size, self.input_length - self.target_length),
+                     -100)),
+            axis=1)
+
+        if self.token_importance_config is not None:
+            batch_mlm["token_importances"] = np.concatenate(
+                (batch_mlm["token_importances"],
+                 np.full(
+                     (mlm_batch_size, self.input_length - self.target_length),
+                     IMPORTANCE_PAD_VALUE)),
+                axis=1)
+
+        batch = {
+            k: torch.from_numpy(
+                np.concatenate((batch_t2m[k], batch_mlm[k]), axis=0))
+            for k in batch_t2m.keys()
+        }
+
+        return batch
+
+    def create_sentinel_ids(self, mask_indices):
+        """
+        Sentinel ids creation given the indices that should be masked.
+        The start indices of each mask are replaced by the sentinel ids in increasing
+        order. Consecutive mask indices to be deleted are replaced with `-1`.
+        """
+        start_indices = mask_indices - np.roll(mask_indices, 1,
+                                               axis=-1) * mask_indices
+        start_indices[:, 0] = mask_indices[:, 0]
+
+        sentinel_ids = np.where(start_indices != 0,
+                                np.cumsum(start_indices, axis=-1),
+                                start_indices)
+        sentinel_ids = np.where(sentinel_ids != 0,
+                                (self.tokenizer.vocab_size - sentinel_ids), 0)
+        sentinel_ids -= mask_indices - start_indices
+
+        return sentinel_ids
+
+    def filter_input_ids(self, input_ids, sentinel_ids):
+        """
+        Puts sentinel mask on `input_ids` and fuse consecutive mask tokens into a single mask token by deleting.
+        This will reduce the sequence length from `expanded_inputs_length` to `input_length`.
+        """
+        batch_size = input_ids.shape[0]
+
+        input_ids_full = np.where(sentinel_ids != 0, sentinel_ids, input_ids)
+        # input_ids tokens and sentinel tokens are >= 0, tokens < 0 are
+        # masked tokens coming after sentinel tokens and should be removed
+        input_ids = input_ids_full[input_ids_full >= 0].reshape(
+            (batch_size, -1))
+        input_ids = np.concatenate(
+            [
+                input_ids,
+                np.full((batch_size, 1),
+                        self.tokenizer.eos_token_id,
+                        dtype=np.int32),
+            ],
+            axis=-1,
+        )
+        return input_ids
+
+    def random_spans_noise_mask(self, length):
+        """This function is copy of `random_spans_helper <https://github.com/google-research/text-to-text-transfer-transformer/blob/84f8bcc14b5f2c03de51bd3587609ba8f6bbd1cd/t5/data/preprocessors.py#L2682>`__ .
+
+        Noise mask consisting of random spans of noise tokens.
+        The number of noise tokens and the number of noise spans and non-noise spans
+        are determined deterministically as follows:
+        num_noise_tokens = round(length * noise_density)
+        num_nonnoise_spans = num_noise_spans = round(num_noise_tokens / mean_noise_span_length)
+        Spans alternate between non-noise and noise, beginning with non-noise.
+        Subject to the above restrictions, all masks are equally likely.
+
+        Args:
+            length: an int32 scalar (length of the incoming token sequence)
+            noise_density: a float - approximate density of output mask
+            mean_noise_span_length: a number
+
+        Returns:
+            a boolean tensor with shape [length]
+        """
+
+        orig_length = length
+
+        num_noise_tokens = int(np.round(length * self.noise_density))
+        # avoid degeneracy by ensuring positive numbers of noise and nonnoise tokens.
+        num_noise_tokens = min(max(num_noise_tokens, 1), length - 1)
+        num_noise_spans = int(
+            np.round(num_noise_tokens / self.mean_noise_span_length))
+
+        # avoid degeneracy by ensuring positive number of noise spans
+        num_noise_spans = max(num_noise_spans, 1)
+        num_nonnoise_tokens = length - num_noise_tokens
+
+        # pick the lengths of the noise spans and the non-noise spans
+        def _random_segmentation(num_items, num_segments):
+            """Partition a sequence of items randomly into non-empty segments.
+            Args:
+                num_items: an integer scalar > 0
+                num_segments: an integer scalar in [1, num_items]
+            Returns:
+                a Tensor with shape [num_segments] containing positive integers that add
+                up to num_items
+            """
+            mask_indices = np.arange(num_items - 1) < (num_segments - 1)
+            np.random.shuffle(mask_indices)
+            first_in_segment = np.pad(mask_indices, [[1, 0]])
+            segment_id = np.cumsum(first_in_segment)
+            # count length of sub segments assuming that list is sorted
+            _, segment_length = np.unique(segment_id, return_counts=True)
+            return segment_length
+
+        noise_span_lengths = _random_segmentation(num_noise_tokens,
+                                                  num_noise_spans)
+        nonnoise_span_lengths = _random_segmentation(num_nonnoise_tokens,
+                                                     num_noise_spans)
+
+        interleaved_span_lengths = np.reshape(
+            np.stack([nonnoise_span_lengths, noise_span_lengths], axis=1),
+            [num_noise_spans * 2],
+        )
+        span_starts = np.cumsum(interleaved_span_lengths)[:-1]
+        span_start_indicator = np.zeros((length, ), dtype=np.int8)
+        span_start_indicator[span_starts] = True
+        span_num = np.cumsum(span_start_indicator)
+        is_noise = np.equal(span_num % 2, 1)
+
+        return is_noise[:orig_length]
+
+    def get_mlm_token_importance(
+        self,
+        text_length: int,
+        expanded_input_length: int,
+        mol_examples: List[Dict[str, Any]],
+    ) -> torch.Tensor:
+
+        text_token_importances = torch.ones(
+            (text_length, expanded_input_length))
+
+        mol_tokens = [
+            self.tokenizer.convert_ids_to_tokens(example["input_ids"])
+            for example in mol_examples
+        ]
+        mol_token_importances = get_token_importance(
+            config=self.token_importance_config,
+            tokenized_labels=mol_tokens,
+            tokenizer=self.tokenizer,
+            representation=self.representation,
+        )
+        mol_token_importances = torch.Tensor(mol_token_importances)
+        token_importances = torch.cat(
+            [text_token_importances, mol_token_importances], dim=0)
+
+        return token_importances
+
+    def filter_mlm_token_importances(self, token_importances, sentinel_ids):
+        """
+        Puts sentinel mask on `token_importances` and fuse consecutive mask tokens importances into a 1 by deleting.
+        This will reduce the sequence length from `expanded_inputs_length` to `input_length`.
+        """
+        batch_size = token_importances.shape[0]
+        mask_importance = self.token_importance_config.special_token_importance
+        token_importances_full = np.where(sentinel_ids != 0, sentinel_ids,
+                                          token_importances)
+        token_importances_full = np.where(sentinel_ids > 0, mask_importance,
+                                          token_importances_full)
+
+        # token_importances tokens and sentinel tokens are >= 0, tokens < 0 are
+        # masked tokens coming after sentinel tokens and should be removed
+        token_importances = token_importances_full[
+            token_importances_full >= 0].reshape((batch_size, -1))
+        token_importances = np.concatenate(
+            [
+                token_importances,
+                np.full((batch_size, 1), mask_importance, dtype=np.float32),
+            ],
+            axis=-1,
+        )
+        return token_importances
 
 
 @dataclass
@@ -391,6 +713,27 @@ def build_mlm_dataset(
     return dataset
 
 
+def build_text2mol_dataset(
+    dataset: Dataset,
+    tokenizer: PreTrainedTokenizer,
+    input_length: int,
+    shuffle: bool = False,
+) -> Dataset:
+    dataset = dataset.map(
+        _t2m_tokenize_function,
+        batched=True,
+        fn_kwargs={
+            "tokenizer": tokenizer,
+            "max_length": input_length,
+        },
+        remove_columns=["seq", "desc"],
+    )
+
+    if shuffle:
+        dataset = dataset.shuffle(seed=42)
+    return dataset
+
+
 def _mlm_tokenize_function(
     examples: Dict[str, Any],
     tokenizer: PreTrainedTokenizer,
@@ -409,6 +752,37 @@ def _mlm_tokenize_function(
     concatenated_ids = concatenated_ids[:total_length].reshape(
         -1, input_length)
     return {"input_ids": concatenated_ids}
+
+
+def _t2m_tokenize_function(
+    examples: Dict[str, Any],
+    tokenizer: PreTrainedTokenizer,
+    max_length: int,
+):
+    tokenizer_seq_out = tokenizer(
+        text=examples["seq"],
+        return_attention_mask=False,
+        return_tensors="np",
+        padding="max_length",
+        truncation=True,
+        max_length=max_length,
+    )
+
+    tokenizer_desc_out = tokenizer(
+        text=examples["desc"],
+        return_attention_mask=False,
+        return_tensors="np",
+        padding="max_length",
+        truncation=True,
+        max_length=max_length,
+    )
+
+    input_ids = tokenizer_desc_out["input_ids"]
+    label_ids = tokenizer_seq_out["input_ids"]
+
+    result = {"input_ids": input_ids, "labels": label_ids}
+
+    return result
 
 
 def get_input_and_target_lengths(
@@ -500,3 +874,45 @@ class MixedDataset(IterableDataset):
 
             # Return the combined batch
             yield text_batch, molecule_batch
+
+
+class MixedDatasetWithT2M(IterableDataset):
+
+    def __init__(
+        self,
+        text_dataset: IterableDataset,
+        mol_dataset: IterableDataset,
+        text_2_mol_dataset: Dataset,
+    ):
+        self.text_dataset = text_dataset
+        self.mol_dataset = mol_dataset
+        self.text_2_mol_dataset = text_2_mol_dataset
+
+    def _reset_iterator(
+        self,
+        iterator: Iterator,
+        dataset: IterableDataset,
+    ):
+        """
+        Helper function to reset the iterator if StopIteration occurs.
+        """
+        try:
+            return next(iterator)
+        except StopIteration:
+            return next(iter(dataset))
+
+    def __iter__(self) -> Iterator[Tuple[Dict[str, Any], Dict[str, Any]]]:
+        text_iter = iter(self.text_dataset)
+        molecule_iter = iter(self.mol_dataset)
+        text_2_mol_iter = iter(self.text_2_mol_dataset)
+
+        while True:
+            # Fetch the next batch or reset the iterator
+            text_batch = self._reset_iterator(text_iter, self.text_dataset)
+            molecule_batch = self._reset_iterator(molecule_iter,
+                                                  self.mol_dataset)
+            text_2_mol_batch = self._reset_iterator(text_2_mol_iter,
+                                                    self.text_2_mol_dataset)
+
+            # Return the combined batch
+            yield text_batch, molecule_batch, text_2_mol_batch
