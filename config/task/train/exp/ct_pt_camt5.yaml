@@ -20,12 +20,14 @@ train_config:
   eval_config:
     task: "text2mol"
     every_steps: 5000
-    eval_results_path: ${oc.env:EVALUATION_RESULT_PATH}/ct_pt_text2mol_frag_micro_base_camt5_v2_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
-    tensorboard_path: ${oc.env:EVALUATION_RESULT_PATH}/ct_pt_text2mol_frag_micro_base_camt5_v2_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+    wandb:
+      _target_: train.config.Wandb
+      project: "CAMT5"
+      run_name: "ct_pt_text2mol_frag_micro_base_camt5_v3_${now:%Y-%m-%d_%H-%M-%S}_stereo"
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ct_pt_text2mol_frag_micro_base_camt5_v2_${now:%m%d}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ct_pt_text2mol_frag_micro_base_camt5_v3_${now:%m%d}_stereo
 
   logging_config:
     every_steps: 100
@@ -35,22 +37,23 @@ train_config:
 
 model_config:
   name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_camt5_v2_T_1_2025-01-05_13-46-17_stereo/checkpoint-100000/pytorch_model.bin"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_camt5_v3_T_1_4_batched_2025-01-12_22-48-06_stereo/checkpoint-100000/pytorch_model.bin"
   representation_type: frag
   load_model:
     from_pretrained: false
   tokenizer_config:
     additional_tokens_paths:
-      - "asset/mol_vocabs/frag_camt5_v2.txt"
+      - "asset/mol_vocabs/frag_camt5_v3.txt"
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
   num_workers: 8
 
-  text_2_mol_data_config:
-    max_seq_len: 512
-    max_target_len: 512
-    exec_file_path: ${oc.env:DATA_PATH}/ni_dataset.py
-    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_frag_micro_pubchem_stereo
-    task_dir: ${oc.env:DATA_PATH}/tasks
-    max_num_instances_per_task: 100000
+  continual_pretrain_data_config:
+    t2m_data_ratio: 0.75
+    input_length: 512
+
+    t2m_data_path: ${oc.env:DATA_PATH}/tasks/pub_chem_data_v3.csv
+
+    mlm_probability: 0.15
+    mean_noise_span_length: 3.0

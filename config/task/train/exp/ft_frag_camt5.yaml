@@ -6,7 +6,7 @@ train_config:
   shot: 1
   do_compile: False
   batch_size: 48
-  grad_acc: 12
+  grad_acc: 6
   optim_config:
     name: adamw
     weight_decay: 0.0
@@ -20,12 +20,14 @@ train_config:
   eval_config:
     task: "text2mol"
     every_steps: 5000
-    eval_results_path: ${oc.env:EVALUATION_RESULT_PATH}/ft_text2mol_frag_micro_base_camt5_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
-    tensorboard_path: ${oc.env:EVALUATION_RESULT_PATH}/ft_text2mol_frag_micro_base_camt5_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+    wandb:
+      _target_: train.config.Wandb
+      project: "CAMT5"
+      run_name: "ft_text2mol_frag_micro_base_camt5_v3_${now:%Y-%m-%d_%H-%M-%S}_stereo"
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_camt5_${now:%m%d}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_frag_micro_base_camt5_v3_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
@@ -35,13 +37,13 @@ train_config:
 
 model_config:
   name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_imp_weighted_T_1_2lr_camt5_2024-12-31_02-38-11_stereo/checkpoint-100000/pytorch_model.bin"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_camt5_v3_T_1_4_batched_2025-01-12_22-48-06_stereo/checkpoint-100000/pytorch_model.bin"
   representation_type: frag
   load_model:
     from_pretrained: false
   tokenizer_config:
     additional_tokens_paths:
-      - "asset/mol_vocabs/frag_camt5.txt"
+      - "asset/mol_vocabs/frag_camt5_v3.txt"
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
