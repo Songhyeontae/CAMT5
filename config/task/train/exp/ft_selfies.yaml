@@ -6,25 +6,28 @@ train_config:
   shot: 1
   do_compile: False
   batch_size: 48
-  grad_acc: 12
+  grad_acc: 8
   optim_config:
     name: adamw
     weight_decay: 0.0
-    base_lr: 5e-4
+    base_lr: 2e-3
     total_steps: 50000
     grad_clip: 30.0
     lr_scheduler_config:
-      name: constant
+      name: cosine
+      warmup_steps: 1000
 
   eval_config:
     task: "text2mol"
     every_steps: 5000
-    eval_results_path: ${oc.env:EVALUATION_RESULT_PATH}/ft_text2mol_selfies_base_${now:%Y-%m-%d_%H-%M-%S}_stereo/eval_results.txt
-    tensorboard_path: ${oc.env:EVALUATION_RESULT_PATH}/ft_text2mol_selfies_base_${now:%Y-%m-%d_%H-%M-%S}_stereo/tensorboard
+    # wandb:
+    #   _target_: train.config.Wandb
+    #   project: "CAMT5"
+    #   run_name: "ft_text2mol_selfies_micro_base_w_pubchem_${now:%Y-%m-%d_%H-%M-%S}_stereo"
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_selfies_base_${now:%m%d}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_selfies_micro_base_w_pubchem_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
@@ -34,7 +37,7 @@ train_config:
 
 model_config:
   name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints_neurips/pt_selfies_base_0506_stereo/checkpoint-pt-100000/pytorch_model.bin"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_selfies_T_1_2025-01-17_18-50-21_stereo/checkpoint-100000/pytorch_model.bin"
   representation_type: selfies
   load_model:
     from_pretrained: false
@@ -50,6 +53,6 @@ data_config:
     max_seq_len: 512
     max_target_len: 512
     exec_file_path: ${oc.env:DATA_PATH}/ni_dataset.py
-    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_selfies_stereo
+    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_selfies_stereo_w_pubchem
     task_dir: ${oc.env:DATA_PATH}/tasks
     max_num_instances_per_task: 100000
