@@ -61,7 +61,7 @@ data_config:
     mlm_probability: 0.15
     mean_noise_span_length: 3.0
     input_length: 512
-  
+
   token_importance_config:
     _target_: train.config.TokenImportanceConfig
     token_importance: atom_count
