@@ -4,7 +4,7 @@ from typing import Union
 import torch
 from transformers import (AutoConfig, OPTForCausalLM, PretrainedConfig,
                           PreTrainedTokenizer, T5ForConditionalGeneration,
-                          T5Tokenizer)
+                          AutoTokenizer)
 
 from model.config import ModelConfig
 from model.representation import Representation, get_representation
@@ -42,7 +42,7 @@ class ModelLoader:
 
     def load_tokenizer(self) -> PreTrainedTokenizer:
         tokenizer_config = self.model_config.tokenizer_config
-        tokenizer = T5Tokenizer.from_pretrained(self.model_config.name,
+        tokenizer = AutoTokenizer.from_pretrained(self.model_config.name,
                                                 use_fast=True)
 
         if tokenizer.pad_token is None:
