@@ -17,22 +17,22 @@ train_config:
       name: cosine
       warmup_steps: 1000
 
+  importance_weight_config:
+    _target_: train.config.ImportanceWeightConfig
+    temperature: 1
+    log_importance_weighted_loss: true
+
   eval_config:
     task: "mlm"
     total_steps: 100
     wandb:
       _target_: train.config.Wandb
       project: "CAMT5"
-      run_name: "pt_smiles_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo"
-
-  importance_weight_config:
-    _target_: train.config.ImportanceWeightConfig
-    temperature: 1
-    log_importance_weighted_loss: true
+      run_name: "pt_frag_micro_base_T_1_camt5_v3_pcdes_${now:%Y-%m-%d_%H-%M-%S}_stereo"
 
   checkpoint:
-    every_steps: 50000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_smiles_T_1_${now:%Y-%m-%d_%H-%M-%S}_stereo
+    every_steps: 10000
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_T_1_camt5_v3_pcdes_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
@@ -42,14 +42,14 @@ train_config:
 
 model_config:
   name: "google/t5-v1_1-base"
-  representation_type: smiles
+  representation_type: frag
   load_model:
     _target_: model.config.LoadModel
     from_pretrained: true
   tokenizer_config:
     _target_: model.config.TokenizerConfig
     additional_tokens_paths:
-      - "asset/mol_vocabs/frag.txt"
+      - "asset/mol_vocabs/frag_camt5_pcdes.txt"
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
@@ -66,3 +66,4 @@ data_config:
     _target_: train.config.TokenImportanceConfig
     token_importance: atom_count
     special_token_importance: 0
+

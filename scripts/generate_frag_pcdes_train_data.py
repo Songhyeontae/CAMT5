@@ -10,19 +10,16 @@ from tqdm import tqdm
 sys.path.append(os.getcwd())
 import json
 
-import pandas as pd
-
-from model.representation import Smiles
+from model.representation import Frag, linearize
 
 load_dotenv()
 DATA_PATH = os.getenv("DATA_PATH")
 
 if __name__ == "__main__":
     with open(
-            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_selfies_train_stereo2_final.json"
+            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_selfies_train_stereo2_final_pcdes.json"
     ) as f:
-        chebi20_json_object = json.load(f)
-    pubchem = pd.read_csv(f"{DATA_PATH}/tasks/pub_chem_data_v3.csv", sep="\t")
+        json_object = json.load(f)
 
     my_json_object = {}
     my_json_object["Contributors"] = ["Seojin Kim"]
@@ -46,28 +43,49 @@ if __name__ == "__main__":
     my_json_object["Instance License"] = ["Unknown"]
 
     my_json_object["Instances"] = []
-    chebi20_instances = chebi20_json_object["Instances"]
 
-    for instance in tqdm(chebi20_instances, total=len(chebi20_instances)):
+    fail_count = 0
+    frag_set = set(["[.]"])
+    frag = Frag()
+
+    instances = json_object["Instances"]
+
+    for instance in tqdm(instances, total=len(instances)):
         tmp_dict = {}
         tmp_dict["id"] = instance["id"]
         tmp_dict["input"] = instance["input"]
         mol = Chem.MolFromSmiles(sf.decoder(instance["output"][0][5:][:-5]))
-        Chem.Kekulize(mol)
         smiles = Chem.MolToSmiles(mol, kekuleSmiles=True)
+        raw_smiles = smiles
 
-        tmp_dict["output"] = ["<bom>" + smiles + "<eom>"]
+        linear_smiles = ""
+        for smiles in raw_smiles.split("."):
+            frag_str, frag_dict = linearize(smiles)
+            frag_set.update(frag_dict)
+            linear_smiles += frag_str + "[.]"
+        linear_smiles = linear_smiles[:-3]
+        tmp_dict["output"] = ["<bom>" + linear_smiles + "<eom>"]
+
+        result_smiles = frag.decode(linear_smiles)
+
+        if Chem.MolToInchi(
+                Chem.MolFromSmiles(result_smiles)) != Chem.MolToInchi(
+                    Chem.MolFromSmiles(raw_smiles)):
+            print(
+                f"Reconstructed SMILES {result_smiles} is not the same as the original SMILES {raw_smiles}"
+            )
+            fail_count += 1
+
         my_json_object["Instances"].append(tmp_dict)
 
-    for row in tqdm(pubchem.itertuples(index=True), total=len(pubchem)):
-        tmp_dict = {}
-        tmp_dict["id"] = f"pubchem_v3_{row.Index}"
-        tmp_dict["input"] = row.desc
-        smiles = row.smiles
-        tmp_dict["output"] = ["<bom>" + smiles + "<eom>"]
-        my_json_object["Instances"].append(tmp_dict)
+    print(f"Fail count: {fail_count} over {len(json_object['Instances'])}")
 
     with open(
-            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_smiles_train_stereo2_w_pubchem.json",
+            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_frag_micro_train_stereo2_camt5_pcdes.json",
             "w") as f:
         json.dump(my_json_object, f)
+
+    with open(f"asset/mol_vocabs/frag_pcdes.txt", "w") as f:
+        for frag in frag_set:
+            f.write(frag)
+            f.write("\n")

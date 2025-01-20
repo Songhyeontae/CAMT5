@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 sys.path.append(os.getcwd())
 import json
+
 import pandas as pd
 
 from model.representation import Smiles
@@ -46,10 +47,10 @@ if __name__ == "__main__":
 
     my_json_object["Instances"] = []
     chebi20_instances = chebi20_json_object["Instances"]
-    
+
     # CHEBI-20
     my_json_object["Instances"].extend(chebi20_instances)
-        
+
     # PubChem
     for row in tqdm(pubchem.itertuples(index=True), total=len(pubchem)):
         tmp_dict = {}
