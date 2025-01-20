@@ -1,0 +1,58 @@
+# @package task
+
+train_config:
+  device: "gpu"
+  seed: 42
+  shot: 1
+  do_compile: False
+  batch_size: 16
+  grad_acc: 2
+  optim_config:
+    name: adamwscale
+    weight_decay: 0.0
+    base_lr: 2e-3
+    total_steps: 100000
+    grad_clip: 30.0
+    lr_scheduler_config:
+      name: cosine
+      warmup_steps: 1000
+
+  eval_config:
+    task: "mlm"
+    total_steps: 100
+    wandb:
+      _target_: train.config.Wandb
+      project: "CAMT5"
+      run_name: "pt_selfies_${now:%Y-%m-%d_%H-%M-%S}_stereo"
+
+  checkpoint:
+    every_steps: 50000
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_selfies_${now:%Y-%m-%d_%H-%M-%S}_stereo
+
+  logging_config:
+    every_steps: 100
+    accuracy: true
+    grad_l2: true
+    weights_l2: true
+
+model_config:
+  name: "google/t5-v1_1-base"
+  representation_type: selfies
+  load_model:
+    _target_: model.config.LoadModel
+    from_pretrained: true
+  tokenizer_config:
+    _target_: model.config.TokenizerConfig
+    additional_tokens_paths:
+      - "asset/mol_vocabs/frag.txt"
+      - "asset/mol_vocabs/selfies.txt"
+
+data_config:
+  _target_: train.config.DataConfig
+  num_workers: 8
+
+  mlm_data_config:
+    _target_: train.config.MLMDataConfig
+    mlm_probability: 0.15
+    mean_noise_span_length: 3.0
+    input_length: 512
