@@ -6,7 +6,7 @@ from transformers import (AutoConfig, AutoTokenizer, OPTForCausalLM,
                           PretrainedConfig, PreTrainedTokenizer,
                           T5ForConditionalGeneration)
 
-from model.config import ModelConfig
+from model.config import ModelConfig, TokenizerConfig
 from model.representation import Representation, get_representation
 from utils import to_absolute_path
 
@@ -40,11 +40,8 @@ class ModelLoader:
             raise ValueError("Invalid model configuration")
         return model
 
-    def load_tokenizer(self) -> PreTrainedTokenizer:
-        tokenizer_config = self.model_config.tokenizer_config
-        tokenizer = AutoTokenizer.from_pretrained(self.model_config.name,
-                                                  use_fast=True)
-
+    def _add_special_tokens(self, tokenizer_config: TokenizerConfig,
+                            tokenizer: PreTrainedTokenizer):
         if tokenizer.pad_token is None:
             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
@@ -95,6 +92,20 @@ class ModelLoader:
         }
         tokenizer.add_special_tokens(special_tokens_dict,
                                      replace_additional_special_tokens=False)
+
+        return tokenizer
+
+    def load_tokenizer(self) -> PreTrainedTokenizer:
+        tokenizer_config = self.model_config.tokenizer_config
+        if tokenizer_config.model_max_length is not None:
+            tokenizer = AutoTokenizer.from_pretrained(
+                self.model_config.name,
+                model_max_length=tokenizer_config.model_max_length)
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(self.model_config.name)
+        if tokenizer_config.add_special_tokens:
+            tokenizer = self._add_special_tokens(tokenizer_config, tokenizer)
+
         return tokenizer
 
     def load_model(self) -> Model:

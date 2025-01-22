@@ -12,6 +12,8 @@ class RepresentationType(Enum):
 
 @dataclasses.dataclass
 class TokenizerConfig:
+    add_special_tokens: bool = True
+    model_max_length: Optional[int] = None
     additional_tokens_paths: List[str] = field(default_factory=list)
 
 

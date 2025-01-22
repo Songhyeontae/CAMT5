@@ -36,15 +36,13 @@ train_config:
     weights_l2: true
 
 model_config:
-  name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_smiles_2025-01-20_23-07-27_stereo/checkpoint-100000/pytorch_model.bin"
+  name: "laituan245/molt5-base"
   representation_type: smiles
   load_model:
-    from_pretrained: false
+    from_pretrained: true
   tokenizer_config:
-    additional_tokens_paths:
-      - "asset/mol_vocabs/frag.txt"
-      - "asset/mol_vocabs/selfies.txt"
+    add_special_tokens: false
+    model_max_length: 512
 
 data_config:
   num_workers: 8
