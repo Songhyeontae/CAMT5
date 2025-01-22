@@ -37,7 +37,7 @@ train_config:
 
 model_config:
   name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_camt5_v3_T_1_4_batched_2025-01-12_22-48-06_stereo/checkpoint-100000/pytorch_model.bin"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_camt5_v3_4_batched_bug_fixed_2025-01-20_19-46-29_stereo/checkpoint-100000/pytorch_model.bin"
   representation_type: frag
   load_model:
     from_pretrained: false

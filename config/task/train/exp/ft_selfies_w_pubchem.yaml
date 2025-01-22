@@ -23,11 +23,11 @@ train_config:
     wandb:
       _target_: train.config.Wandb
       project: "CAMT5"
-      run_name: "ft_text2mol_selfies_micro_base_${now:%Y-%m-%d_%H-%M-%S}_stereo"
+      run_name: "ft_text2mol_selfies_micro_base_w_pubchem_${now:%Y-%m-%d_%H-%M-%S}_stereo"
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_selfies_micro_base_${now:%Y-%m-%d_%H-%M-%S}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_selfies_micro_base_w_pubchem_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
@@ -53,6 +53,6 @@ data_config:
     max_seq_len: 512
     max_target_len: 512
     exec_file_path: ${oc.env:DATA_PATH}/ni_dataset.py
-    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_selfies_stereo
+    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_selfies_stereo_w_pubchem
     task_dir: ${oc.env:DATA_PATH}/tasks
     max_num_instances_per_task: 100000

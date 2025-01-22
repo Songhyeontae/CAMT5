@@ -23,11 +23,11 @@ train_config:
     wandb:
       _target_: train.config.Wandb
       project: "CAMT5"
-      run_name: "ft_text2mol_smiles_micro_base_w_pubchem_${now:%Y-%m-%d_%H-%M-%S}_stereo"
+      run_name: "ft_text2mol_smiles_micro_base_${now:%Y-%m-%d_%H-%M-%S}_stereo"
 
   checkpoint:
     every_steps: 10000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_smiles_micro_base_w_pubchem_${now:%Y-%m-%d_%H-%M-%S}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/ft_text2mol_smiles_micro_base_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
@@ -37,7 +37,7 @@ train_config:
 
 model_config:
   name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_smiles_T_1_2025-01-17_18-50-17_stereo/checkpoint-100000/pytorch_model.bin"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_smiles_2025-01-20_23-07-27_stereo/checkpoint-100000/pytorch_model.bin"
   representation_type: smiles
   load_model:
     from_pretrained: false
@@ -53,6 +53,6 @@ data_config:
     max_seq_len: 512
     max_target_len: 512
     exec_file_path: ${oc.env:DATA_PATH}/ni_dataset.py
-    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_smiles_stereo_w_pubchem
+    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/text2mol_smiles_stereo
     task_dir: ${oc.env:DATA_PATH}/tasks
     max_num_instances_per_task: 100000
