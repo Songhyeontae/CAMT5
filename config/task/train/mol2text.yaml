@@ -1,0 +1,72 @@
+defaults:
+  - _self_
+  - train/exp: ft_frag_camt5_mol2text
+
+_target_: train.task.mol2text.App
+name: "mol2text"
+task_id: ${now:%Y-%m-%d_%H-%M-%S}
+
+# default values for the traing task
+train_config:
+  _target_: train.config.TrainConfig
+  device: "cpu"
+  seed: 42
+  shot: 1
+  do_compile: False
+  batch_size: 48
+  grad_acc: 8
+  optim_config:
+    _target_: train.config.OptimConfig
+    name: adamwscale
+    weight_decay: 0.0
+    base_lr: 1e-3
+    total_steps: 50000
+    grad_clip: 30.0
+    lr_scheduler_config:
+      _target_: train.config.SchedulerConfig
+      name: cosine
+      warmup_steps: 1000
+
+  # If you want to evaluate the model during training,
+  # you can set the following parameters
+  eval_config:
+    _target_: train.config.EvalConfig
+    task: "mol2text"
+    every_steps: 10
+
+  checkpoint:
+    _target_: train.config.Checkpoint
+    every_steps: 10000
+
+  logging_config:
+    _target_: train.config.LoggingConfig
+    every_steps: 100
+    accuracy: true
+    grad_l2: true
+    weights_l2: true
+
+model_config:
+  _target_: model.config.ModelConfig
+  name: "google/t5-v1_1-base"
+  representation_type: smiles
+  load_model:
+    _target_: model.config.LoadModel
+    from_pretrained: false
+  tokenizer_config:
+    _target_: model.config.TokenizerConfig
+    additional_tokens_paths:
+      - "asset/mol_vocabs/frag.txt"
+      - "asset/mol_vocabs/selfies.txt"
+
+data_config:
+  _target_: train.config.DataConfig
+  num_workers: 8
+
+  text_2_mol_data_config:
+    _target_: train.config.Mol2TextDataConfig
+    max_seq_len: 512
+    max_target_len: 512
+    exec_file_path: ${oc.env:DATA_PATH}/ni_dataset.py
+    data_dir: ${oc.env:DATA_PATH}/splits/mol_text/mol2text_smiles_stereo
+    task_dir: ${oc.env:DATA_PATH}/tasks
+    max_num_instances_per_task: 100000

@@ -514,6 +514,7 @@ class TaskHelper:
                 input_ids=batch['input_ids'],
                 attention_mask=batch['attention_mask'],
                 max_length=max_length,
+                generation_config=model.generation_config,
             )
         elif test_task == TestTask.MLM.value:
             generation_result.predictions = model.generate(
@@ -541,9 +542,15 @@ class TaskHelper:
 
         # Mol2Text, Only parse inputs
         if test_task == TestTask.MOL2TEXT.value:
-            parsed_inputs = [
-                input.split('- Input: ')[-1].split(' Output:')[0]
+            selfies = Selfies()
+            parsed_smiles_inputs = [
+                selfies.decode(
+                    input.split('- Input: ')[-1].split(' Output:')[0])
                 for input in inputs
+            ]
+            parsed_inputs = [
+                representation.encode(smiles)
+                for smiles in parsed_smiles_inputs
             ]
             parsed_predictions = predictions
             parsed_references = references

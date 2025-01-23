@@ -171,6 +171,17 @@ class Text2MolDataConfig:
     max_num_instances_per_eval_task: Optional[int] = None
 
 
+@dataclasses.dataclass
+class Mol2TextDataConfig:
+    max_seq_len: int
+    max_target_len: int
+    exec_file_path: str
+    data_dir: str
+    task_dir: str
+    max_num_instances_per_task: Optional[int] = None
+    max_num_instances_per_eval_task: Optional[int] = None
+
+
 # Config for MLM Task. Use C4, zinc dataset.
 @dataclasses.dataclass
 class MLMDataConfig:
@@ -199,6 +210,7 @@ class ContinualPretrainDataConfig:
 class DataConfig:
     num_workers: int
     text_2_mol_data_config: Optional[Text2MolDataConfig] = None
+    mol_2_text_data_config: Optional[Mol2TextDataConfig] = None
     mlm_data_config: Optional[MLMDataConfig] = None
     continual_pretrain_data_config: Optional[
         ContinualPretrainDataConfig] = None

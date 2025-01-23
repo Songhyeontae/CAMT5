@@ -436,6 +436,84 @@ class DataCollatorForText2Mol:
 
 
 @dataclass
+class DataCollatorForNI:
+    tokenizer: PreTrainedTokenizerBase
+    representation: Representation
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_source_length: Optional[int] = None
+    max_target_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+    label_pad_token_id: int = -100
+    return_tensors: str = "pt"
+
+    def __call__(self, batch, return_tensors=None):
+
+        if return_tensors is None:
+            return_tensors = self.return_tensors
+
+        sources = []
+        for instance in batch:
+            task_input = ""
+            # add the input first.
+            task_input += "Now complete the following example -\n"
+            task_input += f"Input: {instance['Instance']['input'].strip()}"
+            if not task_input[-1] in string.punctuation:
+                task_input += "."
+            task_input += "\n"
+            task_input += "Output: "
+
+            definition = ""
+            if isinstance(instance["Definition"], list):
+                definition = ("Definition: " +
+                              instance["Definition"][0].strip())
+            else:
+                definition = "Definition: " + instance["Definition"].strip()
+            if not definition[-1] in string.punctuation:
+                definition += "."
+            definition += "\n\n"
+
+            source = definition + task_input
+            tokenized_source = self.tokenizer(source)["input_ids"]
+            if len(tokenized_source) <= self.max_source_length:
+                sources.append(source)
+            else:
+                sources.append(
+                    self.tokenizer.decode(
+                        tokenized_source[:self.max_source_length],
+                        skip_special_tokens=True,
+                    ))
+
+        model_inputs = self.tokenizer(
+            sources,
+            max_length=self.max_source_length,
+            padding=self.padding,
+            return_tensors=self.return_tensors,
+            truncation=True,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+        )
+
+        if "output" in batch[0]["Instance"] and batch[0]["Instance"]["output"]:
+            # Randomly select one reference if multiple are provided.
+            labels = [random.choice(ex["Instance"]["output"]) for ex in batch]
+            labels = self.tokenizer(
+                labels,
+                max_length=self.max_target_length,
+                padding=self.padding,
+                return_tensors=self.return_tensors,
+                truncation=True,
+                pad_to_multiple_of=self.pad_to_multiple_of,
+            )
+
+            label_mask = labels["attention_mask"].bool()
+            model_inputs["labels"] = labels["input_ids"].masked_fill(
+                ~label_mask, self.label_pad_token_id)
+        else:
+            model_inputs["labels"] = None
+
+        return model_inputs
+
+
+@dataclass
 class DataCollatorForT5MLM:
     """
     [Copied from https://github.com/huggingface/transformers/blob/main/examples/flax/language-modeling/run_t5_mlm_flax.py]
