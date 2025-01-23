@@ -26,10 +26,12 @@ def get_text2mol_metrics(
         if gen_mol == None:
             gen_mol = Chem.MolFromSmiles(DUMMY_SMILES)
         target_mol = Chem.MolFromSmiles(reference)
+        if target_mol == None:
+            target_mol = Chem.MolFromSmiles(DUMMY_SMILES)
         gen_smiles = Chem.MolToSmiles(gen_mol)
         target_smiles = Chem.MolToSmiles(target_mol)
 
-        if gen_smiles == DUMMY_SMILES:
+        if gen_smiles == DUMMY_SMILES or target_smiles == DUMMY_SMILES:
             invalid += 1
             s_rdk_list.append(0)
             s_maccs_list.append(0)

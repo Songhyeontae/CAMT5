@@ -53,7 +53,7 @@ if __name__ == "__main__":
         tmp_dict = {}
         tmp_dict["id"] = instance["id"]
         tmp_dict["output"] = instance["output"]
-        
+
         mol = Chem.MolFromSmiles(sf.decoder(instance["input"][5:][:-5]))
         smiles = Chem.MolToSmiles(mol, kekuleSmiles=True)
         raw_smiles = smiles
