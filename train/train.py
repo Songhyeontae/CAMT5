@@ -2,13 +2,11 @@ import dataclasses
 import logging
 import math
 import os
-import random
 import time
 from itertools import islice
 from typing import Dict, List, Optional, Tuple, Union
 
 import evaluate
-import numpy as np
 import torch
 import wandb
 from accelerate import Accelerator
@@ -22,7 +20,7 @@ from transformers.modeling_outputs import (CausalLMOutputWithPast,
 
 from metrics.text2mol_metrics import get_text2mol_metrics
 from model.loader import Model
-from model.representation import Representation, Selfies, get_importance
+from model.representation import Representation, Selfies, Smiles
 from train.config import (Device, ImportanceWeightConfig, ResumeTrainingConfig,
                           TemperatureDecay, TestTask, TrainConfig)
 from train.loss import get_loss
@@ -557,17 +555,22 @@ class TaskHelper:
                 for input in inputs
             ]
 
-            parsed_predictions = []
-            for prediction in predictions:
-                parsed_prediction = representation.decode(prediction)
-                parsed_predictions.append(parsed_prediction)
+            # If representation is SMILES, no need to decode
+            if isinstance(representation, Smiles):
+                parsed_predictions = predictions
+                parsed_references = references
+            else:
+                parsed_predictions = []
+                for prediction in predictions:
+                    parsed_prediction = representation.decode(prediction)
+                    parsed_predictions.append(parsed_prediction)
 
-            # TODO(hyeontae): check references are SELFIES format
-            selfies = Selfies()
-            parsed_references = [
-                selfies.decode(reference, verbose=True)
-                for reference in references
-            ]
+                # TODO(hyeontae): check references are SELFIES format
+                selfies = Selfies()
+                parsed_references = [
+                    selfies.decode(reference, verbose=True)
+                    for reference in references
+                ]
 
         # Only parse predictions
         elif test_task in [
