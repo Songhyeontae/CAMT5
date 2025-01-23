@@ -63,7 +63,7 @@ if __name__ == "__main__":
             f"{DATA_PATH}/tasks/task1_pcdes_text2mol_smiles_train_stereo2.json",
             "w") as f:
         json.dump(train_json_obejct, f)
-        
+
     # Validation data
     with open(
             f"{DATA_PATH}/tasks/task2_chebi20_text2mol_selfies_validation_stereo2_final_pcdes.json"
@@ -111,7 +111,7 @@ if __name__ == "__main__":
             f"{DATA_PATH}/tasks/task2_pcdes_text2mol_smiles_validation_stereo2.json",
             "w") as f:
         json.dump(val_json_obejct, f)
-        
+
     # Test data
     with open(
             f"{DATA_PATH}/tasks/task3_chebi20_text2mol_selfies_test_stereo2_final_pcdes.json"
