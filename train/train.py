@@ -176,7 +176,7 @@ class Trainer:
                 preds,
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True)
-            preds = [pred.replace(" ", "").strip() for pred in decoded_preds]
+            preds = [pred.strip() for pred in decoded_preds]
             return preds
 
         input_total, reference_total, prediction_total = [], [], []
