@@ -562,22 +562,17 @@ class TaskHelper:
                 for input in inputs
             ]
 
-            # If representation is SMILES, no need to decode
-            if isinstance(representation, Smiles):
-                parsed_predictions = predictions
-                parsed_references = references
-            else:
-                parsed_predictions = []
-                for prediction in predictions:
-                    parsed_prediction = representation.decode(prediction)
-                    parsed_predictions.append(parsed_prediction)
+            parsed_predictions = []
+            for prediction in predictions:
+                parsed_prediction = representation.decode(prediction)
+                parsed_predictions.append(parsed_prediction)
 
-                # TODO(hyeontae): check references are SELFIES format
-                selfies = Selfies()
-                parsed_references = [
-                    selfies.decode(reference, verbose=True)
-                    for reference in references
-                ]
+            # TODO(hyeontae): check references are SELFIES format
+            selfies = Selfies()
+            parsed_references = [
+                selfies.decode(reference, verbose=True)
+                for reference in references
+            ]
 
         # Only parse predictions
         elif test_task in [
