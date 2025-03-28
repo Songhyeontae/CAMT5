@@ -17,6 +17,7 @@ class TestTask(Enum):
 class TokenImportance(Enum):
     ATOM_COUNT = "atom_count"
     ATOM_FREQ = "atom_freq"
+    MOTIF_FREQ = "motif_freq"
     PREDEFINED = "predefined"
 
 
