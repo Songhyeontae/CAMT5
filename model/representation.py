@@ -448,17 +448,33 @@ def linearize(smile: SMILES) -> Tuple[str, List[str]]:
 
     dfs_output = []
 
+    # def dfs(graph, start, visited=None):
+    #     if visited is None:
+    #         visited = []
+    #     visited.append(start)
+
+    #     dfs_output.append(start)
+    #     for next_node in graph[start]:
+    #         if next_node not in visited:
+    #             dfs(graph, next_node, visited)
+    #     return visited
+    
     def dfs(graph, start, visited=None):
         if visited is None:
             visited = []
-        visited.append(start)
+        queue = [start]
 
-        dfs_output.append(start)
-        for next_node in graph[start]:
-            if next_node not in visited:
-                dfs(graph, next_node, visited)
+        while queue:
+            node = queue.pop(0)
+            if node not in visited:
+                visited.append(node)
+                dfs_output.append(node)
+                # 방문하지 않은 인접 노드들을 큐에 추가
+                for next_node in graph[node]:
+                    if next_node not in visited and next_node not in queue:
+                        queue.append(next_node)
         return visited
-
+    
     graph = {}
 
     frag_indices = rdmolops.GetMolFrags(m2)
@@ -520,7 +536,9 @@ def linearize(smile: SMILES) -> Tuple[str, List[str]]:
         tmp_matching.append([frag_idx2, index_in_frag2])
 
     # list version
+    
     dfs(graph, "0")
+    
 
     frag_list = []
     done_list = []
@@ -717,6 +735,8 @@ def linearize(smile: SMILES) -> Tuple[str, List[str]]:
 
 
 def decode_linear(linear_smiles: str) -> SMILES:
+    
+    
     frags = []
     opened = 0
     tmp_frag = ""
@@ -742,6 +762,8 @@ def decode_linear(linear_smiles: str) -> SMILES:
             tmp_frag += s
 
     links = [s.count("*") for s in frags]
+    
+    
     if sum(links) == 0:
         return linear_smiles[1:-1]
     tmp_frags = []
@@ -811,23 +833,109 @@ def decode_linear(linear_smiles: str) -> SMILES:
             continue
     frags = tmp_frags
 
+    # def dfs(ptr, path):
+    #     orig_ptr = ptr
+    #     ptr = ptr + 1
+    #     for ii in range(links[orig_ptr]):
+    #         try:
+    #             links[orig_ptr] -= 1
+    #             links[ptr] -= 1
+    #         except:
+    #             continue
+    #         if links[ptr] < 0:
+    #             continue
+    #         path.append([orig_ptr, ptr, ii])
+    #         ptr, path = dfs(ptr, path)
+
+    #     return ptr, path
     def dfs(ptr, path):
-        orig_ptr = ptr
-        ptr = ptr + 1
-        for ii in range(links[orig_ptr]):
-            try:
-                links[orig_ptr] -= 1
-                links[ptr] -= 1
-            except:
-                continue
-            if links[ptr] < 0:
-                continue
-            path.append([orig_ptr, ptr, ii])
-            ptr, path = dfs(ptr, path)
+        orig_links = links.copy()
+        orig_links[0] += 1
+        
+        queue = [(0, ptr)]
+        curr_path = path
+        
+        while queue:
+            # print(queue)
+            prev_ptr, orig_ptr = queue.pop(0)
+            # next_ptr = orig_ptr + 1
+            next_ptr = orig_ptr + len(queue) + 1
+            # print("---")
+            # print(orig_links[prev_ptr]-1)
+            # print(len(queue))
+            # print("---")
+            # next_ptr = orig_ptr + 1 #orig_links[prev_ptr]-1
+            
+            # print(orig_links[orig_ptr]-1, links[orig_ptr])
+            # orig_links[orig_ptr]-1
+            
+            # if orig_ptr == 5:
+            #     print(links)
+            for ii in range(links[orig_ptr]):
+                # print(links)
+                
+                # if orig_ptr == 7:
+                #     print(links)
+                try:
+                    links[orig_ptr] -= 1
+                    links[next_ptr] -= 1
+                except:
+                    continue
+                if links[next_ptr] < 0:
+                    continue
+                # if orig_ptr == 7:
+                    # print("--")
+                    # print(curr_path)
+                    # print(curr_path + [[orig_ptr, next_ptr, ii]])
+                    # print("--")
+                curr_path += [[orig_ptr, next_ptr, ii]]
+                
+                queue.append((orig_ptr, next_ptr))
+                # if orig_ptr == 7:
+                #     print(new_path)
+                next_ptr += 1
+                
+        # print(curr_path)
+        return ptr, curr_path
 
-        return ptr, path
+    def dfs_backup(ptr, path):
+        queue = [(ptr, path.copy())]
 
+        while queue:
+            # print(len(queue))
+            orig_ptr, curr_path = queue.pop(0)
+            next_ptr = orig_ptr + 1
+            
+            for ii in range(links[orig_ptr]):
+                # print(links)
+                # print(curr_path)
+                # if orig_ptr == 7:
+                #     print(links)
+                try:
+                    links[orig_ptr] -= 1
+                    links[next_ptr] -= 1
+                except:
+                    continue
+                if links[next_ptr] < 0:
+                    continue
+                # if orig_ptr == 7:
+                    # print("--")
+                    # print(curr_path)
+                    # print(curr_path + [[orig_ptr, next_ptr, ii]])
+                    # print("--")
+                new_path = curr_path + [[orig_ptr, next_ptr, ii]]
+                # print(new_path)
+                queue.append((next_ptr, new_path))
+                # if orig_ptr == 7:
+                #     print(new_path)
+                next_ptr += 1
+                curr_path = new_path
+
+        return ptr, curr_path
+    # print(links)
     _, paths = dfs(0, [])
+    # print(paths)
+    
     m = Chem.Mol()
     em = Chem.EditableMol(m)
     em = Chem.RWMol()
