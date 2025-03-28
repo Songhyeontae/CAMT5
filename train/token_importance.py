@@ -36,7 +36,7 @@ def get_token_importance(
         token_importances = _get_motif_freq_importances(
             tokenized_labels,
             tokenizer,
-            config.atom_freq_path,
+            config.motif_freq_path,
             config.special_token_importance,
         )
     elif config.token_importance == TokenImportance.PREDEFINED.value:

@@ -118,6 +118,7 @@ class TokenImportanceConfig:
     special_token_importance: Optional[float] = 1.0
     # path to the atom count file
     atom_freq_path: Optional[str] = None
+    motif_freq_path: Optional[str] = None
 
 
 @dataclasses.dataclass
