@@ -21,6 +21,8 @@ from model.config import ModelConfig
 from model.loader import Model, ModelLoader
 from model.representation import Representation
 
+from itertools import islice
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,7 +91,9 @@ def evaluate(config: EvalConfig, mol_lms: Dict[str, MolLM]):
         rep_name: mol_lm
         for rep_name, mol_lm in mol_lms.items() if rep_name not in cached_keys
     }
-    for batch in tqdm(dataloader, total=total_steps):
+    total_steps = len(dataloader)
+    # total_steps = 10
+    for batch in tqdm(islice(dataloader, total_steps), total=total_steps):
         target, description = batch
         targets.extend(target)
         for rep_name, mol_lm in non_cached_mol_lms.items():
@@ -371,7 +375,13 @@ def _load_cache(cache_path: str, ) -> Tuple[List[str], List[float]]:
     confidences = []
     with open(cache_path, "r") as f:
         for line in f:
-            prediction, confidence = line.strip().split("\t")
+            splitted = line.strip().split("\t")
+            # prediction, confidence = line.strip().split("\t")
+            if len(splitted) < 2:
+                prediction = ""
+                confidence = splitted[0]
+            else:
+                prediction, confidence = splitted
             predictions.append(prediction)
             confidences.append(float(confidence[1:-1]))  # Remove parentheses
 

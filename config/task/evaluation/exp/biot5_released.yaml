@@ -1,0 +1,24 @@
+# @package task
+eval_config:
+
+  predict_config:
+    cache_paths:
+      selfies: ""
+    confidence_config:
+      confidence: neg_perplexity
+
+  device: gpu
+  ensemble: false
+
+model_configs:
+  - _target_: model.config.ModelConfig
+    name: "QizhiPei/biot5-base-text2mol"
+    representation_type: selfies
+    load_model:
+      _target_: model.config.LoadModel
+      from_pretrained: true
+    tokenizer_config:
+      _target_: model.config.TokenizerConfig
+      model_max_length: 512
+      add_special_tokens: false
+  

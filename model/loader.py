@@ -2,7 +2,7 @@ import logging
 from typing import Union
 
 import torch
-from transformers import (AutoConfig, AutoTokenizer, OPTForCausalLM,
+from transformers import (AutoConfig, AutoTokenizer, T5Tokenizer, OPTForCausalLM,
                           PretrainedConfig, PreTrainedTokenizer,
                           T5ForConditionalGeneration)
 
@@ -30,6 +30,10 @@ class ModelLoader:
         pt_model_config = self._get_pretrained_model_config()
         if not self.model_config.load_model.from_pretrained:
             model = T5ForConditionalGeneration(pt_model_config)
+        elif (self.model_config.load_model.from_pretrained
+               and "biot5" in self.model_config.name):
+            logger.info("Using BioT5 released model")
+            model = T5ForConditionalGeneration.from_pretrained(self.model_config.name)
         elif (self.model_config.load_model.from_pretrained
               and "facebook" in self.model_config.name):
             model = OPTForCausalLM.from_pretrained(self.model_config.name)
@@ -97,6 +101,10 @@ class ModelLoader:
 
     def load_tokenizer(self) -> PreTrainedTokenizer:
         tokenizer_config = self.model_config.tokenizer_config
+        if "biot5" in self.model_config.name:
+            logger.info("Using BioT5 tokenizer")
+            tokenizer = T5Tokenizer.from_pretrained(self.model_config.name, model_max_length=tokenizer_config.model_max_length)
+            return tokenizer
         if tokenizer_config.model_max_length is not None:
             tokenizer = AutoTokenizer.from_pretrained(
                 self.model_config.name,

@@ -84,7 +84,7 @@ def get_perplexity(
                 representation=representation,
             )
         else:
-            importance = torch.ones_like(loss_per_token)
+            importance = torch.ones_like(loss_per_token) / loss_per_token.shape[1]
 
         weight = importance
         importance_weighted_loss_per_token = loss_per_token * weight
