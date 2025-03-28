@@ -19,14 +19,9 @@ DATA_PATH = os.getenv("DATA_PATH")
 
 if __name__ == "__main__":
     with open(
-            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_selfies_train_stereo2_final_pcdes.json"
+            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_selfies_train_stereo2_final.json"
     ) as f:
-        pcdes_json_object = json.load(f)
-
-    with open(
-            f"{DATA_PATH}/tasks/task3_chebi20_text2mol_selfies_test_stereo2_final_pcdes.json"
-    ) as f:
-        pcdes_test_json_object = json.load(f)
+        json_object = json.load(f)
 
     my_json_object = {}
     my_json_object["Contributors"] = ["Seojin Kim"]
@@ -51,16 +46,16 @@ if __name__ == "__main__":
 
     my_json_object["Instances"] = []
 
+    fail_count = 0
+    frag_set = set(["[.]"])
     frag = Frag()
 
-    # PCDes train data
-    instances = pcdes_json_object["Instances"]
-    my_json_object["Instances"].extend(instances)
+    instances = json_object["Instances"]
 
-    # PCDes test data for exclusion
-    test_mols = set()
-    instances = pcdes_test_json_object["Instances"]
     for instance in tqdm(instances, total=len(instances)):
+        tmp_dict = {}
+        tmp_dict["id"] = instance["id"]
+        tmp_dict["input"] = instance["input"]
         mol = Chem.MolFromSmiles(sf.decoder(instance["output"][0][5:][:-5]))
         smiles = Chem.MolToSmiles(mol, kekuleSmiles=True)
         raw_smiles = smiles
@@ -68,11 +63,23 @@ if __name__ == "__main__":
         linear_smiles = ""
         for smiles in raw_smiles.split("."):
             frag_str, frag_dict = linearize(smiles)
+            frag_set.update(frag_dict)
             linear_smiles += frag_str + "[.]"
         linear_smiles = linear_smiles[:-3]
-        test_mols.add(linear_smiles)
+        tmp_dict["output"] = ["<bom>" + linear_smiles + "<eom>"]
 
-    exclude_count = 0
+        result_smiles = frag.decode(linear_smiles)
+
+        if Chem.MolToInchi(
+                Chem.MolFromSmiles(result_smiles)) != Chem.MolToInchi(
+                    Chem.MolFromSmiles(raw_smiles)):
+            print(
+                f"Reconstructed SMILES {result_smiles} is not the same as the original SMILES {raw_smiles}"
+            )
+            fail_count += 1
+
+        my_json_object["Instances"].append(tmp_dict)
+
     # PubChem Train data
     pubchem = pd.read_csv(f"{DATA_PATH}/tasks/pub_chem_data_v3.csv", sep="\t")
     for row in tqdm(pubchem.itertuples(index=True), total=len(pubchem)):
@@ -85,24 +92,34 @@ if __name__ == "__main__":
         linear_smiles = ""
         for smiles in raw_smiles.split("."):
             frag_str, frag_dict = linearize(smiles)
+            frag_set.update(frag_dict)
             linear_smiles += frag_str + "[.]"
         linear_smiles = linear_smiles[:-3]
 
-        if linear_smiles in test_mols:
-            print(f"Excluded {linear_smiles}")
-            exclude_count += 1
-            continue
+        tmp_dict["output"] = ["<bom>" + linear_smiles + "<eom>"]
 
-        tmp_dict["output"] = ["<bom>" + row.selfies + "<eom>"]
+        result_smiles = frag.decode(linear_smiles)
+
+        if Chem.MolToInchi(
+                Chem.MolFromSmiles(result_smiles)) != Chem.MolToInchi(
+                    Chem.MolFromSmiles(raw_smiles)):
+            print(
+                f"Reconstructed SMILES {result_smiles} is not the same as the original SMILES {raw_smiles}"
+            )
+            fail_count += 1
 
         my_json_object["Instances"].append(tmp_dict)
 
-    print(f"Excluded {exclude_count} instances")
     print(
-        f"Total {len(pcdes_json_object['Instances']) + len(pubchem) - exclude_count} instances"
+        f"Fail count: {fail_count} over {len(json_object['Instances'])+len(pubchem)}"
     )
 
     with open(
-            f"{DATA_PATH}/tasks/task1_pcdes_text2mol_selfies_train_stereo2_w_pubchem.json",
+            f"{DATA_PATH}/tasks/task1_chebi20_text2mol_frag_micro_train_stereo2_camt5_brics_w_pubchem.json",
             "w") as f:
         json.dump(my_json_object, f)
+
+    with open(f"asset/mol_vocabs/frag_brics.txt", "w") as f:
+        for frag in frag_set:
+            f.write(frag)
+            f.write("\n")

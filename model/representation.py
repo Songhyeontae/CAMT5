@@ -5,7 +5,7 @@ from typing import Dict, List, NewType, Protocol, Tuple
 
 import selfies as sf
 from rdkit import Chem, RDLogger
-from rdkit.Chem import rdmolops
+from rdkit.Chem import BRICS, rdmolops
 from scipy.stats import rankdata
 
 from model.config import RepresentationType
@@ -281,6 +281,9 @@ def linearize(smile: SMILES) -> Tuple[str, List[str]]:
     m = Chem.MolFromSmiles(smile)
     m_orig = Chem.MolFromSmiles(smile)
 
+    brics_bonds = list(BRICS.FindBRICSBonds(m))
+    brics_bonds = [x for (x, y) in brics_bonds]
+
     res = []
     all_bonds = []
     for bond in m.GetBonds():
@@ -295,8 +298,10 @@ def linearize(smile: SMILES) -> Tuple[str, List[str]]:
         if bond.GetBondType() != Chem.rdchem.BondType.SINGLE:
             continue
 
-        res.append(((bond_begin_atom_idx, bond_end_atom_idx), (0, 0)))
-        all_bonds.append(bond_idx)
+        if (bond_begin_atom_idx, bond_end_atom_idx) in brics_bonds or (
+                bond_end_atom_idx, bond_begin_atom_idx) in brics_bonds:
+            res.append(((bond_begin_atom_idx, bond_end_atom_idx), (0, 0)))
+            all_bonds.append(bond_idx)
 
     if len(all_bonds) == 0:
         frag_string = orig_smile

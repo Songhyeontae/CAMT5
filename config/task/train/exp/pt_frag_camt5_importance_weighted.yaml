@@ -28,11 +28,11 @@ train_config:
     wandb:
       _target_: train.config.Wandb
       project: "CAMT5"
-      run_name: "pt_frag_micro_base_T_1_camt5_v3_${now:%Y-%m-%d_%H-%M-%S}_stereo"
+      run_name: "pt_frag_micro_base_T_1_camt5_v3_brics_${now:%Y-%m-%d_%H-%M-%S}_stereo"
 
   checkpoint:
     every_steps: 50000
-    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_T_1_camt5_v3_${now:%Y-%m-%d_%H-%M-%S}_stereo
+    path: ${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_base_T_1_camt5_v3_brics_${now:%Y-%m-%d_%H-%M-%S}_stereo
 
   logging_config:
     every_steps: 100
@@ -49,7 +49,7 @@ model_config:
   tokenizer_config:
     _target_: model.config.TokenizerConfig
     additional_tokens_paths:
-      - "asset/mol_vocabs/frag_camt5_v3.txt"
+      - "asset/mol_vocabs/frag_brics.txt"
       - "asset/mol_vocabs/selfies.txt"
 
 data_config:
