@@ -147,6 +147,14 @@ class App(BaseTaskCls):
                     "text":
                     _molecule_process(representation.encode(example["text"]))
                 }, )
+        elif self.model_config.representation_type == RepresentationType.T_SMILES.value:
+            zinc_dataset = zinc_dataset.remove_columns(["id", "selfies"])
+            zinc_dataset = zinc_dataset.rename_column("smiles", "text")
+            zinc_dataset = zinc_dataset.map(
+                lambda example: {
+                    "text":
+                    _molecule_process(representation.encode(example["text"]))
+                }, )
 
         return zinc_dataset
 

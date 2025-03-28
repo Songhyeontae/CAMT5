@@ -8,6 +8,7 @@ class RepresentationType(Enum):
     SMILES = "smiles"
     SELFIES = "selfies"
     FRAG = "frag"
+    T_SMILES = "t_smiles"
 
 
 @dataclasses.dataclass

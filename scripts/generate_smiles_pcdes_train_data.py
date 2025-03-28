@@ -10,8 +10,9 @@ from tqdm import tqdm
 sys.path.append(os.getcwd())
 import json
 
-from model.representation import Frag, linearize
 import pandas as pd
+
+from model.representation import Frag, linearize
 
 load_dotenv()
 DATA_PATH = os.getenv("DATA_PATH")
@@ -21,7 +22,7 @@ if __name__ == "__main__":
             f"{DATA_PATH}/tasks/task1_chebi20_text2mol_selfies_train_stereo2_final_pcdes.json"
     ) as f:
         pcdes_json_object = json.load(f)
-        
+
     with open(
             f"{DATA_PATH}/tasks/task3_chebi20_text2mol_selfies_test_stereo2_final_pcdes.json"
     ) as f:
@@ -63,7 +64,7 @@ if __name__ == "__main__":
 
         tmp_dict["output"] = ["<bom>" + smiles + "<eom>"]
         my_json_object["Instances"].append(tmp_dict)
-        
+
     # PCDes test data for exclusion
     test_mols = set()
     instances = pcdes_test_json_object["Instances"]
@@ -78,7 +79,7 @@ if __name__ == "__main__":
             linear_smiles += frag_str + "[.]"
         linear_smiles = linear_smiles[:-3]
         test_mols.add(linear_smiles)
-    
+
     exclude_count = 0
     # PubChem Train data
     pubchem = pd.read_csv(f"{DATA_PATH}/tasks/pub_chem_data_v3.csv", sep="\t")
@@ -87,24 +88,26 @@ if __name__ == "__main__":
         tmp_dict["id"] = f"pubchem_v3_{row.Index}"
         tmp_dict["input"] = row.desc
         raw_smiles = row.smiles
-        
+
         mol = Chem.MolFromSmiles(raw_smiles)
         linear_smiles = ""
         for smiles in raw_smiles.split("."):
             frag_str, frag_dict = linearize(smiles)
             linear_smiles += frag_str + "[.]"
         linear_smiles = linear_smiles[:-3]
-        
+
         if linear_smiles in test_mols:
             print(f"Excluded {linear_smiles}")
             exclude_count += 1
             continue
-        
+
         tmp_dict["output"] = ["<bom>" + raw_smiles + "<eom>"]
         my_json_object["Instances"].append(tmp_dict)
 
     print(f"Excluded {exclude_count} instances")
-    print(f"Total {len(pcdes_json_object['Instances']) + len(pubchem) - exclude_count} instances")
+    print(
+        f"Total {len(pcdes_json_object['Instances']) + len(pubchem) - exclude_count} instances"
+    )
 
     with open(
             f"{DATA_PATH}/tasks/task1_pcdes_text2mol_smiles_train_stereo2_w_pubchem.json",

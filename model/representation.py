@@ -1,14 +1,24 @@
 import logging
 import re
+import sys
 from itertools import product
 from typing import Dict, List, NewType, Protocol, Tuple
+# Adding the path to the t-SMILES module
+sys.path.append("/home/osikjs/t-SMILES/t-SMILES")
 
 import selfies as sf
+from DataSet.Graph.CNJMolAssembler import CNJMolAssembler
+from DataSet.Graph.CNJTMol import CNJMolUtils
+#pylint: disable=import-error
+from DataSet.STDTokens import CTokens, STDTokens_Frag_File
+from MolUtils.RDKUtils.Frag.RDKFragUtil import Fragment_Alg
 from rdkit import Chem, RDLogger
 from rdkit.Chem import rdmolops
 from scipy.stats import rankdata
 
 from model.config import RepresentationType
+
+#pylint: enable=import-error
 
 logger = logging.getLogger(__name__)
 RDLogger.DisableLog('rdApp.*')
@@ -36,6 +46,9 @@ CHIRAL_TOKENS = {
     "[N@+]": Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CCW,
     "[N@@+]": Chem.rdchem.ChiralType.CHI_TETRAHEDRAL_CW,
 }
+
+ASM_ALG = "CALG_TSDY"
+DECODING_ALG = Fragment_Alg.BRICS_DY
 
 
 class Representation(Protocol):
@@ -70,6 +83,62 @@ class Smiles(Representation):
         try:
             smiles = Chem.MolToSmiles(Chem.MolFromSmiles(text_mol),
                                       kekuleSmiles=True)
+        except:
+            if verbose:
+                logger.warning(f"Failed to decode SMILES: {text_mol}")
+            smiles = DUMMY_SMILES
+        return smiles
+
+    def get_size(self, text_mol: str) -> int:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        atom_cnts = mol.GetNumAtoms()
+        return atom_cnts
+
+    def get_atom_weighted_score(self, text_mol: str,
+                                atom_scores: Dict[str, float]) -> float:
+        smiles = self.decode(text_mol)
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return 0
+        atoms = mol.GetAtoms()
+        atom_symbols = [atom.GetSymbol() for atom in atoms]
+        score = sum([atom_scores.get(atom, 0) for atom in atom_symbols])
+        return score
+
+
+class T_Smiles(Representation):
+
+    def encode(self, mol: SMILES, verbose=False) -> str:
+        ctoken = CTokens(STDTokens_Frag_File(None),
+                         max_length=256,
+                         invalid=True,
+                         onehot=False)
+        try:
+            t_smiles = CNJMolUtils.encode_single(mol, ctoken, DECODING_ALG)[1]
+        except:
+            if verbose:
+                logger.warning(f"Failed to encode SMILES: {mol}")
+            t_smiles = CNJMolUtils.encode_single(DUMMY_SMILES, ctoken,
+                                                 DECODING_ALG)[1]
+        return t_smiles
+
+    def decode(self, text_mol: str, verbose=False) -> SMILES:
+        ctoken = CTokens(STDTokens_Frag_File(None),
+                         is_pad=True,
+                         pad_symbol=' ',
+                         startend=True,
+                         max_length=512,
+                         flip=False,
+                         invalid=True,
+                         onehot=False)
+        bfs_ex = ''.join(text_mol.strip().split(' '))
+        try:
+            smiles = CNJMolAssembler.decode_single(bfs_ex,
+                                                   ctoken,
+                                                   ASM_ALG,
+                                                   n_samples=1,
+                                                   p_mean=None)[0]
         except:
             if verbose:
                 logger.warning(f"Failed to decode SMILES: {text_mol}")
@@ -199,6 +268,7 @@ def get_representation(representation_type) -> Representation:
         RepresentationType.SMILES.value: Smiles,
         RepresentationType.SELFIES.value: Selfies,
         RepresentationType.FRAG.value: Frag,
+        RepresentationType.T_SMILES.value: T_Smiles,
     }
 
     return representation_dict[representation_type]()
