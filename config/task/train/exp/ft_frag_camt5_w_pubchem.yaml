@@ -36,8 +36,8 @@ train_config:
     weights_l2: true
 
 model_config:
-  name: "google/t5-v1_1-base"
-  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/"
+  name: "google/t5-v1_1-small"
+  checkpoint_path: "${oc.env:EXTERNAL_PATH}/checkpoints/hyeontae/pt_frag_micro_small_T_1_camt5_v3_brics_2025-03-29_04-00-20_stereo/checkpoint-50000/pytorch_model.bin"
   representation_type: frag
   load_model:
     from_pretrained: false
