@@ -219,6 +219,7 @@ class Trainer:
                 test_task,
                 prediction_total,
                 reference_total,
+                None,  # all_predictions is None for training (single predictions only)
             ))
 
         for k, v in eval_metric.items():
@@ -599,8 +600,9 @@ class TaskHelper:
     @staticmethod
     def set_additional_metrics(
         test_task: TestTask,
-        predictions: List[str],
+        predictions: Union[List[str], List[List[str]]],
         references: List[str],
+        all_predictions: Optional[List[List[str]]] = None,
     ):
         additional_metrics = {}
         #TODO(hyeontae): Remove hard-coded logic
@@ -609,6 +611,7 @@ class TaskHelper:
                 get_text2mol_metrics(
                     predictions=predictions,
                     references=references,
+                    all_predictions=all_predictions,
                 ))
         elif test_task == TestTask.MOL2TEXT.value:
             pass
