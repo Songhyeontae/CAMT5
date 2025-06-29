@@ -10,3 +10,4 @@ tensorboard.sh
 .slurm-gpu-logs
 .slurm-logs
 .slurm_scripts
+modification*
