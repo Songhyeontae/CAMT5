@@ -95,7 +95,7 @@ def evaluate(config: EvalConfig, mol_lms: Dict[str, MolLM]):
         target, description = batch
         targets.extend(target)
         for rep_name, mol_lm in non_cached_mol_lms.items():
-            predictions, all_predictions, confidences = predict(
+            predictions, confidences = predict(
                 mol_lm=mol_lm,
                 description=description,
                 device=device,
@@ -103,28 +103,24 @@ def evaluate(config: EvalConfig, mol_lms: Dict[str, MolLM]):
                 target=target,
             )
             predictions_per_model[rep_name].extend(predictions)
-            all_predictions_per_model[rep_name].extend(all_predictions)
             confidences_per_model[rep_name].extend(confidences)
 
     for rep_name, mol_lm in non_cached_mol_lms.items():
         _cache_predictions(
             key=rep_name,
             predictions=predictions_per_model[rep_name],
-            all_predictions=all_predictions_per_model[rep_name],
             confidences=confidences_per_model[rep_name],
         )
 
     decoded_ensembled_predictions = enemble_and_decode_predictions(
         mol_lms=mol_lms,
         predictions_per_model=predictions_per_model,
-        all_predictions_per_model=all_predictions_per_model,
         confidences_per_model=confidences_per_model,
     )
 
     # Calculate metrics using both best predictions and all predictions
     metrics = get_text2mol_metrics(
         predictions=decoded_ensembled_predictions[0],  # Best predictions for most metrics
-        all_predictions=decoded_ensembled_predictions[1],  # All predictions for diversity
         references=targets,
     )
 
@@ -137,7 +133,7 @@ def predict(
     device: str,
     config: PredictConfig,
     target: Tuple[str] = None,
-) -> Tuple[List[str], List[List[str]], List[float]]:
+) -> Tuple[List[str], List[float]]:
     mol_lm.model.to(device)
     mol_lm.model.eval()
 
@@ -165,18 +161,7 @@ def predict(
         sequences = outputs.sequences.reshape(batch_size,
                                               config.num_return_sequences, -1)
         
-        # Decode all sequences for each example
-        all_decoded_sequences = []
-        for i in range(batch_size):
-            example_sequences = []
-            for j in range(config.num_return_sequences):
-                seq = sequences[i, j, :]
-                decoded_seq = mol_lm.tokenizer.decode(seq, skip_special_tokens=True)
-                decoded_seq = decoded_seq.replace(" ", "")
-                example_sequences.append(decoded_seq)
-            all_decoded_sequences.append(example_sequences)
-        
-        # Use the best sequence for confidence calculation and return as decoded_sequences
+        # Use the best sequence for return (original behavior)
         best_sequences = sequences[:, 0, :]  # Sequences are sorted by score
         decoded_sequences = mol_lm.tokenizer.batch_decode(
             best_sequences, skip_special_tokens=True)
@@ -196,7 +181,7 @@ def predict(
             target=target,
         )
 
-    return decoded_sequences, all_decoded_sequences, confidences
+    return decoded_sequences, confidences
 
 
 # TODO(hyeontae): Refactor this function
@@ -304,14 +289,13 @@ def get_confidence(
 def enemble_and_decode_predictions(
     mol_lms: Dict[str, MolLM],
     predictions_per_model: Dict[str, List[str]],
-    all_predictions_per_model: Dict[str, List[List[str]]],
     confidences_per_model: Dict[str, List[float]],
-) -> Tuple[List[str], List[List[str]]]:
+) -> List[str]:
     """
-    Ensemble predictions from multiple models and return both best predictions and all predictions.
-    
+    Ensemble predictions from multiple models and return the best prediction.
+
     Returns:
-        Tuple[List[str], List[List[str]]]: (best_predictions, all_predictions)
+        List[str]: The best prediction.
     """
     logger.info("Ensembling predictions for model representations: %s",
                 list(mol_lms.keys()))
@@ -328,32 +312,16 @@ def enemble_and_decode_predictions(
         for confidences in confidences_per_model.values()
     ), "Confidences should have the same length"
 
-    best_ensembled_predictions = []
-    all_ensembled_predictions = []
-    model_win_counts = defaultdict(int)
-    
-    for i in range(num_predictions):
         model_confidences = {}
         for rep_name, confidences in confidences_per_model.items():
-            model_confidences[rep_name] = confidences[i]
+        model_confidences[rep_name] = confidences[0]
         confident_rep = max(model_confidences, key=model_confidences.get)
-        
-        # Get best prediction for this example
-        best_prediction = predictions_per_model[confident_rep][i]
-        decoded_best_prediction = mol_lms[confident_rep].representation.decode(best_prediction)
-        best_ensembled_predictions.append(decoded_best_prediction)
-        
-        # Get all predictions for this example from the most confident model
-        all_predictions_for_example = []
-        for pred in all_predictions_per_model[confident_rep][i]:
-            decoded_pred = mol_lms[confident_rep].representation.decode(pred)
-            all_predictions_for_example.append(decoded_pred)
-        all_ensembled_predictions.append(all_predictions_for_example)
-        
-        model_win_counts[confident_rep] += 1
+    
+    # Get best prediction for this example
+    best_prediction = predictions_per_model[confident_rep][0]
+    decoded_best_prediction = mol_lms[confident_rep].representation.decode(best_prediction)
 
-    logger.info("Model win counts: %s", model_win_counts)
-    return best_ensembled_predictions, all_ensembled_predictions
+    return decoded_best_prediction
 
 
 def _validate_eval_config(eval_config: EvalConfig,
@@ -373,7 +341,6 @@ def _validate_eval_config(eval_config: EvalConfig,
 def _cache_predictions(
     key: str,
     predictions: List[str],
-    all_predictions: List[List[str]],
     confidences: List[float],
 ) -> None:
     """
@@ -382,20 +349,18 @@ def _cache_predictions(
     Args:
         key (str): The identifier for the predictions file.
         predictions (List[str]): List of best prediction strings.
-        all_predictions (List[List[str]]): List of lists of all prediction strings.
         confidences (List[float]): List of confidence scores corresponding to each example.
     """
     file_path = f"{key}_predictions.txt"
     with open(file_path, "w") as f:
-        for best_pred, all_preds, confidence in zip(predictions, all_predictions, confidences):
-            all_preds_str = ",".join(all_preds)
-            f.write(f"{best_pred}\t{confidence:.6f}\t{all_preds_str}\n")
+        for best_pred, confidence in zip(predictions, confidences):
+            f.write(f"{best_pred}\t{confidence:.6f}\n")
 
     abs_path = os.path.abspath(file_path)
     logger.info("Predictions for '%s' are cached to '%s'.", key, abs_path)
 
 
-def _load_cache(cache_path: str, ) -> Tuple[List[str], List[List[str]], List[float]]:
+def _load_cache(cache_path: str, ) -> Tuple[List[str], List[float]]:
     """
     Loads cached predictions and confidences from a file.
 
@@ -403,22 +368,19 @@ def _load_cache(cache_path: str, ) -> Tuple[List[str], List[List[str]], List[flo
         cache_path (str): Path to the cache file.
 
     Returns:
-        Tuple[List[str], List[List[str]], List[float]]: A tuple of best predictions, all predictions, and confidences.
+        Tuple[List[str], List[float]]: A tuple of best prediction and confidences.
     """
     predictions = []
-    all_predictions = []
     confidences = []
     
     with open(cache_path, "r") as f:
         for line in f:
             parts = line.strip().split("\t")
-            if len(parts) != 3:
+            if len(parts) != 2:
                 continue
-            best_pred, confidence_str, all_preds_str = parts
+            best_pred, confidence_str = parts
             confidence = float(confidence_str)
-            all_preds = all_preds_str.split(",") if all_preds_str else []
             predictions.append(best_pred)
-            all_predictions.append(all_preds)
             confidences.append(confidence)
-    
-    return predictions, all_predictions, confidences
+
+    return predictions, confidences

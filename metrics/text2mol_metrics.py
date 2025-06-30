@@ -208,34 +208,44 @@ def calculate_novelty(predictions_list: List[List[str]], references: List[str]) 
 
 def calculate_diversity(predictions_list: List[List[str]]) -> float:
     """
-    Calculate diversity score based on GitHub reference implementation.
-    Diversity measures how different the generated molecules are from each other.
+    Calculate diversity score for each example separately, then return the average.
+    Diversity measures how different the generated molecules are from each other within each example.
     """
     if not predictions_list:
         return 0.0
     
-    # Convert all predictions to molecules
-    all_pred_mols = []
-    for preds in predictions_list:
-        for pred in preds:
+    diversity_scores = []
+    
+    for example_predictions in predictions_list:
+        # Convert predictions for this example to molecules
+        mols = []
+        for pred in example_predictions:
             mol = Chem.MolFromSmiles(pred)
             if mol is not None:
-                all_pred_mols.append(mol)
+                mols.append(mol)
+        
+        if len(mols) <= 1:
+            diversity_scores.append(0.0)
+            continue
+        
+        # Calculate fingerprints for this example
+        fps = to_fingerprints(mols)
+        
+        # Calculate diversity within this example
+        example_diversity_scores = []
+        for i in range(1, len(fps)):
+            sims = DataStructs.BulkTanimotoSimilarity(fps[i], fps[:i])
+            example_diversity_scores.extend([1 - s for s in sims])
+        
+        # Average diversity for this example
+        if example_diversity_scores:
+            example_avg_diversity = sum(example_diversity_scores) / len(example_diversity_scores)
+            diversity_scores.append(example_avg_diversity)
+        else:
+            diversity_scores.append(0.0)
     
-    if len(all_pred_mols) <= 1:
-        return 0.0
-    
-    # Calculate fingerprints
-    pred_fps = to_fingerprints(all_pred_mols)
-    
-    # Calculate diversity
-    diversity_scores = []
-    for i in range(1, len(pred_fps)):
-        sims = DataStructs.BulkTanimotoSimilarity(pred_fps[i], pred_fps[:i])
-        diversity_scores.extend([1 - s for s in sims])
-    
-    avg_diversity = sum(diversity_scores) / len(diversity_scores) if diversity_scores else 0.0
-    return avg_diversity
+    # Return average diversity across all examples
+    return sum(diversity_scores) / len(diversity_scores) if diversity_scores else 0.0
 
 
 def get_rdk_metric(prediction, reference) -> float:
